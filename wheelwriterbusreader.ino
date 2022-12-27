@@ -34,21 +34,23 @@ void setup() {
 
 uint16_t readBusDMA() {
     delayMicroseconds(3);
+    for(int i = 0; i < 100; i++)
+    {
+    }
+    
     readTimer.start();
     bitsRead = 1;
-    currentBusRead = 1;
+    currentBusRead = 0;
     
     while(bitsRead < 10)
     {
     }
     readTimer.stop();
     return currentBusRead;
-    
-  return currentBusRead;
 }
 
 
-uint16_t busBuffer[1024];
+uint16_t busBuffer[16384];
 uint16_t busBufP = 0;
 void loop() {
 //  SerialUSB.println("test");
@@ -94,6 +96,12 @@ void loop() {
           }
           SerialUSB.println();
           */
+          for(int j = 0; j < 10; j++)
+          {
+            SerialUSB.print((busBuffer[i] >> j) & 0b1);
+          }
+          SerialUSB.print(":");
+          
           SerialUSB.println(busBuffer[i]);
       }
       counter = 0;
@@ -153,5 +161,4 @@ void loop() {
 513
 897
 721
-
  */
