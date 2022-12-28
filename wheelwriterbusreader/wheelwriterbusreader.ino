@@ -48,9 +48,9 @@ uint8_t IRAM_ATTR readBusDMA()
 		busReadTimesBuf[busReadP++] = thisMicrosOffset;
 	}
 
-	float sampleTime = 5.25;
+	float sampleTime = 5.34;
 	// float nextSampleAt = sampleTime / 2;
-	float nextSampleAt = sampleTime / 3;
+	float nextSampleAt = 1;
 	int sampleScanP = 0;
 	uint16_t value = 0;
 	for (int i = 0; i < 10; i++)
@@ -60,7 +60,7 @@ uint8_t IRAM_ATTR readBusDMA()
 		{
 			sampleScanP++;
 		}
-		value |= busReadBuf[sampleScanP];
+		value |= ((busReadBuf[sampleScanP] + busReadBuf[sampleScanP + 1] + busReadBuf[sampleScanP + 2]) >= 2);
 		nextSampleAt += sampleTime;
 	}
 
