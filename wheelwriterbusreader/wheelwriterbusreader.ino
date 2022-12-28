@@ -15,7 +15,8 @@ volatile int bitsRead = 0;
 volatile uint16_t currentBusRead;
 
 volatile bool readingBus;
-volatile bool busReadBuf[4096]; // 1024 * 100ns = 102.4us
+volatile bool busReadBuf[1024];
+volatile uint64_t busReadTimesBuf[1024];
 volatile uint16_t busReadP = 0;
 volatile uint16_t logicChanges[100];
 volatile uint16_t logicChangesP = 0;
@@ -56,57 +57,97 @@ void setup()
 	Serial.print(getCpuFrequencyMhz());
 	Serial.println("MHz");
 
-	// 10MHz timer
-	readTimer = timerBegin(0, 24, true);
+	// 1MHz timer
+	// readTimer = timerBegin(0, 24, true);
+	// timerStart(readTimer);
 
-	timerAttachInterrupt(readTimer, &busReaderInterruptHandler, true);
-	timerAlarmWrite(readTimer, 50, true);
-	timerAlarmEnable(readTimer);
-	timerStart(readTimer);
+	// timerAttachInterrupt(readTimer, &busReaderInterruptHandler, true);
+	// timerAlarmWrite(readTimer, 1, true);
+	// timerAlarmEnable(readTimer);
+	// timerStart(readTimer);
 }
 
-uint16_t readBusDMA()
+uint16_t IRAM_ATTR readBusDMA()
 {
-	Serial.println("READBUSDMA FUNCTION");
-	unsigned int startMicros = micros();
-
 	busReadP = 0;
-	logicChangesP = 0;
-	readingBus = true;
-	timerStart(readTimer);
-	delayMicroseconds(55);
-	// sample for 55us
-	// while ((busReadP < (55)))
-	// {
-		// Serial.println(busReadP);
-	// }
-	timerStop(readTimer);
-	readingBus = false;
 
-	// timerAlarmDisable(readTimer);
-	Serial.print("Read function duration (us): ");
-	Serial.println(micros() - startMicros);
-	Serial.print("BusReadP:");
-	Serial.println(busReadP);
-	/*
 	unsigned int startMicros = micros();
+	unsigned int thisMicrosOffset;
 
-	busReadP = 0;
-	logicChangesP = 0;
-
-	timerWrite(readTimer, 0);
-	timerStart(readTimer);
-	bitsRead = 1;
-	currentBusRead = 0;
-	while((logicChangesP < 10) && (busReadP < (54 * 10)))
+	while((thisMicrosOffset = (micros() - startMicros)) < 55)
 	{
-		Serial.print("busReadP:");
-		Serial.println(busReadP);
+		busReadBuf[busReadP] = readInPinDMA();
+		busReadTimesBuf[busReadP++] = thisMicrosOffset;
 	}
-	timerStop(readTimer);
+	Serial.print("n reads: ");
+	Serial.println(busReadP);
+	Serial.print("micros:");
 	Serial.println(micros() - startMicros);
-	return currentBusRead;*/
-	return 0;
+	
+	
+	float logicChanges[10]; // use fixed point by a factor of 100000 to calculate these
+	uint8_t logicChangesP = 0;
+	for(int i = 1; i < busReadP; i++)
+	{
+		if(busReadBuf[i] != busReadBuf[i - 1])
+		{
+			logicChanges[logicChangesP++] = busReadTimesBuf[i];
+		}
+	}
+
+	uint8_t logicChangeTimes[12] = {0};
+	// float avgChangeTime;
+	for(int i = 0; i < logicChangesP; i++)
+	{
+		Serial.print("Level change @ ");
+		Serial.print(logicChanges[i]);
+		logicChangeTimes[(int)ceil(logicChanges[i] / 5.34)]++;
+		Serial.print("This corresponds to bit:");
+		Serial.println((int)ceil(logicChanges[i] / 5.34));
+		// logicChangeTimes[i] = logicChanges[i] / (logicChanges[i] / 5.34);
+		// Serial.println(" change time:");
+		// Serial.println(logicChanges[i]);
+
+		// avgChangeTime += (logicChanges[i] / avgChangeTime);
+		// avgChangeTime /= 2.0;
+	}
+	uint16_t value = 0;
+	bool bitState = 0;
+	for(int i = 0; i < 10; i++)
+	{
+		if(logicChangeTimes[i])
+		{
+			bitState = !bitState;
+		}
+		value <<= 1;
+		value |= bitState;
+	}
+	
+
+	// Serial.print("Avg bit time (us): ");
+	// Serial.println(avgChangeTime);
+
+	
+	for(int i = 0; i < busReadP; i++)
+	{
+		for(size_t j = Serial.print(busReadBuf[i]); j < 3; j++)
+		{
+			Serial.print(" ");
+		}
+
+	}
+	Serial.println();
+	for(int i = 0; i < busReadP; i++)
+	{
+		for(size_t j = Serial.print(busReadTimesBuf[i]); j < 3; j++)
+		{
+			Serial.print(" ");
+		}
+	}
+	Serial.println();
+
+	
+	return value;
 }
 
 uint16_t busBuffer[16384];
