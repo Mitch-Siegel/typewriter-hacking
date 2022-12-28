@@ -26,7 +26,7 @@ hw_timer_t *readTimer = NULL;
 void IRAM_ATTR busReaderInterruptHandler()
 {
 	busReadBuf[busReadP] = readInPinDMA();
-	if(readingBus)
+	if (readingBus)
 	{
 		busReadP++;
 	}
@@ -74,7 +74,7 @@ uint16_t IRAM_ATTR readBusDMA()
 	unsigned int startMicros = micros();
 	unsigned int thisMicrosOffset;
 
-	while((thisMicrosOffset = (micros() - startMicros)) < 55)
+	while ((thisMicrosOffset = (micros() - startMicros)) < 55)
 	{
 		busReadBuf[busReadP] = readInPinDMA();
 		busReadTimesBuf[busReadP++] = thisMicrosOffset;
@@ -83,70 +83,79 @@ uint16_t IRAM_ATTR readBusDMA()
 	Serial.println(busReadP);
 	Serial.print("micros:");
 	Serial.println(micros() - startMicros);
-	
-	
-	float logicChanges[10]; // use fixed point by a factor of 100000 to calculate these
+
+	uint16_t logicChanges[10];
 	uint8_t logicChangesP = 0;
-	for(int i = 1; i < busReadP; i++)
+	for (int i = 1; i < busReadP; i++)
 	{
-		if(busReadBuf[i] != busReadBuf[i - 1])
+		if (busReadBuf[i] != busReadBuf[i - 1])
 		{
 			logicChanges[logicChangesP++] = busReadTimesBuf[i];
 		}
 	}
 
-	uint8_t logicChangeTimes[12] = {0};
+	float logicChangeTimes[12] = {0.0};
+	uint8_t logicChangeTimesP = 0;
+	float speedMultiplier = 0;
+#define FIXED_POINT_MULTIPLIER 10000
 	// float avgChangeTime;
-	for(int i = 0; i < logicChangesP; i++)
+	for (int i = 0; i < logicChangesP; i++)
 	{
 		Serial.print("Level change @ ");
 		Serial.print(logicChanges[i]);
-		logicChangeTimes[(int)ceil(logicChanges[i] / 5.34)]++;
-		Serial.print("This corresponds to bit:");
-		Serial.println((int)ceil(logicChanges[i] / 5.34));
-		// logicChangeTimes[i] = logicChanges[i] / (logicChanges[i] / 5.34);
-		// Serial.println(" change time:");
-		// Serial.println(logicChanges[i]);
-
-		// avgChangeTime += (logicChanges[i] / avgChangeTime);
-		// avgChangeTime /= 2.0;
+		Serial.print("\t");
+		Serial.print(i);
+		Serial.print("\t");
+		
+		float expectedBit = ((logicChanges[i] * FIXED_POINT_MULTIPLIER) / (.535 * FIXED_POINT_MULTIPLIER));
+		float bitTiming = (expectedBit / floor(expectedBit));
+		logicChangeTimes[logicChangeTimesP++] = bitTiming;
+		speedMultiplier += bitTiming;
+		Serial.print(logicChangeTimes[logicChangeTimesP - 1]);
+		Serial.println();
 	}
+	char floatSpeed[10];
+	speedMultiplier /= (logicChangeTimesP);
+	sprintf(floatSpeed, "%1.5f", speedMultiplier);
+
+	Serial.print("Overall speed of ");
+	Serial.print(floatSpeed);
+	Serial.println("x expected");
+	
 	uint16_t value = 0;
+	/*
 	bool bitState = 0;
-	for(int i = 0; i < 10; i++)
+	for (int i = 0; i < 10; i++)
 	{
-		if(logicChangeTimes[i])
+		if (logicChangeTimes[i])
 		{
 			bitState = !bitState;
 		}
 		value <<= 1;
 		value |= bitState;
 	}
-	
+	*/
 
 	// Serial.print("Avg bit time (us): ");
 	// Serial.println(avgChangeTime);
 
-	
-	for(int i = 0; i < busReadP; i++)
+	for (int i = 0; i < busReadP; i++)
 	{
-		for(size_t j = Serial.print(busReadBuf[i]); j < 3; j++)
+		for (size_t j = Serial.print(busReadBuf[i]); j < 3; j++)
 		{
 			Serial.print(" ");
 		}
-
 	}
 	Serial.println();
-	for(int i = 0; i < busReadP; i++)
+	for (int i = 0; i < busReadP; i++)
 	{
-		for(size_t j = Serial.print(busReadTimesBuf[i]); j < 3; j++)
+		for (size_t j = Serial.print(busReadTimesBuf[i]); j < 3; j++)
 		{
 			Serial.print(" ");
 		}
 	}
 	Serial.println();
 
-	
 	return value;
 }
 
