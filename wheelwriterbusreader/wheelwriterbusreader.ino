@@ -92,9 +92,11 @@ uint8_t IRAM_ATTR readBusDMA()
 	return (value >> 1) & 0xff;
 }
 
+// this spins for ~5.34us
 void IRAM_ATTR baudDelay()
 {
-	for (volatile int j = 0; j < 0x50; j++)
+	// delayMicroseconds(5);
+	for (volatile int j = 0; j < 0x8a; j++)
 	{
 	}
 }
@@ -120,7 +122,6 @@ void IRAM_ATTR sendByte(byte toSend)
 	digitalWriteFast(PIN_WRITE, 0);
 	baudDelay();
 	// digitalWriteFast(LED_BUILTIN, 0);
-	delayMicroseconds(1000); // wait before sending the next thing
 }
 
 uint16_t busBuffer[16384];
@@ -194,7 +195,7 @@ void loop()
 				switch (Serial.print(busBuffer[i]))
 				{
 				case 1:
-					Serial.print(" ");
+					Serial.print("  ");
 					break;
 
 				case 2:
@@ -207,7 +208,7 @@ void loop()
 
 				if (i != busBufP - 1)
 				{
-					Serial.print(", ");
+					Serial.print(" ");
 				}
 				else
 				{
@@ -240,15 +241,46 @@ void loop()
 					// noInterrupts();
 					Serial.print("Let's send this many bytes: ");
 					Serial.println(busBufPCopy);
+					unsigned int elapsed = 0;
 					for (int i = 0; i < busBufPCopy; i++)
 					{
 						// Serial.print("Byte ");
 						// Serial.print(i);
 						// Serial.print(":");
-						// Serial.println(busBufferCopy[i]);
+						switch (Serial.print(busBufferCopy[i]))
+						{
+						case 1:
+							Serial.print("  ");
+							break;
+
+						case 2:
+							Serial.print(" ");
+							break;
+
+						default:
+							break;
+						}
+						Serial.print(" ");
+						unsigned startTime = micros();
 						sendByte(busBufferCopy[i]);
+						unsigned int currentTime = micros();
+						elapsed += (currentTime - startTime);
+						delayMicroseconds(450); // wait before sending the next thing
 					}
-					Serial.println("Sent em");
+					/*
+					while (readInPinDMA() == 1)
+					{
+						// busy
+					}
+					while (readInPinDMA() == 0)
+					{
+						// busy
+					}
+					*/
+					Serial.print("\nSent em - time taken (total, per byte)");
+					Serial.print(elapsed);
+					Serial.print(", ");
+					Serial.println(((float)elapsed) / busBufPCopy);
 					// interrupts();
 					typingCounter = 0;
 					didSomething = true;
@@ -259,11 +291,6 @@ void loop()
 						sendByte(printA[i]);
 					}
 					*/
-				}
-				else if (typingCounter % (RESEND_INTERVAL / 100) == 0)
-				{
-					Serial.print("Waiting to do something: ");
-					Serial.println(RESEND_INTERVAL - typingCounter);
 				}
 			}
 		}
