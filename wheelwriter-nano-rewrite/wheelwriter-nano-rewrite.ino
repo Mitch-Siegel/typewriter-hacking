@@ -81,28 +81,32 @@ int printAscii(char c, int charCount)
 	switch (c)
 	{
 	case '<':
-		micro_backspace(1);
+	{
+		micro_backspace(2);
 		paper_vert(0, 1);
 		letterMicrospace(asciiTrans['.']);
 
+		paper_vert(0, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(0, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 2);
+		micro_backspace(4);
 		paper_vert(1, 1);
-		letterNoSpace(asciiTrans['.']);
-		paper_vert(0, 2);
 		letterMicrospace(asciiTrans['.']);
-
-		paper_vert(0, 1);
-		letterNoSpace(asciiTrans['.']);
-		paper_vert(1, 4);
+		paper_vert(1, 1);
 		letterMicrospace(asciiTrans['.']);
 
 		paper_vert(0, 1);
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
+	}
 		return charCount + 1;
 		break;
 
 	case '>':
+	{
 		micro_backspace(2);
 
 		paper_vert(0, 3);
@@ -121,31 +125,20 @@ int printAscii(char c, int charCount)
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
-		// paper_vert(1, 1);
+	}
+		return charCount + 1;
+		break;
 
-
-
-
-		/*
+	case '|':
+	{
+		letterNoSpace(asciiTrans[':']);
 		paper_vert(0, 1);
-		letterNoSpace(asciiTrans['.']);
-		paper_vert(1, 4);
-		letterMicrospace(asciiTrans['.']);
-
+		letterNoSpace(asciiTrans[':']);
 		paper_vert(0, 1);
-		letterNoSpace(asciiTrans['.']);
+		letterNoSpace(asciiTrans[':']);
 		paper_vert(1, 2);
-		letterMicrospace(asciiTrans['.']);
-
-		paper_vert(1, 1);
-		letterMicrospace(asciiTrans['.']);
-
-		paper_vert(1, 1);
-		letterMicrospace(asciiTrans[' ']);
-		letterMicrospace(asciiTrans[' ']);
-		letterMicrospace(asciiTrans[' ']);
-		*/
-
+		return printOne(asciiTrans[' '], charCount);
+	}
 		return charCount + 1;
 		break;
 
@@ -767,6 +760,7 @@ void send_letter(int letter)
 	// delay(LETTER_DELAY); // before next character
 }
 
+#define NOSPACE_DELAY 50
 void letterNoSpace(int letter)
 {
 	sendByte(0x121);
@@ -775,8 +769,10 @@ void letterNoSpace(int letter)
 	sendByte(0b000000011);
 	sendByte(letter);
 	sendByte(0);		 // don't send any spaces
-	delay(LETTER_DELAY); // before next character
+	delay(NOSPACE_DELAY); // before next character
 }
+
+#define MICROSPACE_DELAY 23
 
 void letterMicrospace(int letter)
 {
@@ -786,9 +782,11 @@ void letterMicrospace(int letter)
 	sendByte(0b000000011);
 	sendByte(letter);
 	sendByte(2);			  // send one microspace
-	delay(LETTER_DELAY / 20); // before next character
+	delay(MICROSPACE_DELAY); // before next character
 }
 
+
+#define VERT_DELAY 45 // delay for paper_vert
 // 0 is up, 1 is down
 void paper_vert(int direction)
 {
@@ -819,7 +817,7 @@ void paper_vert(int direction)
 	sendByte(0x121);
 	sendByte(0x00b);
 
-	delay(LETTER_DELAY); // give it a bit more time
+	delay(VERT_DELAY); // give it a bit more time
 }
 
 // 0 is up, 1 is down
