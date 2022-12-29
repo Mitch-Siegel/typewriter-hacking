@@ -47,6 +47,7 @@ void setup()
 {
 	pinMode(PIN_READ, INPUT);
 	pinMode(PIN_WRITE, OUTPUT);
+	pinMode(LED_BUILTIN, OUTPUT);
 	digitalWrite(PIN_WRITE, 0);
 
 	Serial.begin(500000);
@@ -98,46 +99,36 @@ void IRAM_ATTR baudDelay()
 	}
 }
 
-void IRAM_ATTR sendByte(byte b)
+void IRAM_ATTR sendByte(byte toSend)
 {
-	// noInterrupts();
-	unsigned start = micros();
-	// pinMode(PIN_READ, OUTPUT);
+	byte reversed = 0;
+	for (int i = 0; i < 8; i++)
+	{
+		reversed |= ((toSend >> (7 - i)) & 0b1) << i;
+	}
 
 	// invert all writes (1 switches the transistor and pulls the bus low)
 	digitalWriteFast(PIN_WRITE, 1);
 	baudDelay();
 	for (int i = 0; i < 8; i++)
 	{
-		digitalWriteFast(PIN_WRITE, !(b & 0b1));
-		b >>= 1;
+		digitalWriteFast(PIN_WRITE, !(reversed & 0b1));
+		reversed >>= 1;
 		baudDelay();
 		// spin for a bit to eat up the extra time
 	}
 	digitalWriteFast(PIN_WRITE, 0);
 	baudDelay();
-	// Serial.println("sending byte!");
-	//  sendByteOnPin(b);
-	/*
-	while (((PIND & 0b00001000) >> 3) == 1) {
-	  // busy
-	}
-	while (((PIND & 0b00001000) >> 3) == 0) {
-	  // busy
-	}
-	*/
-	unsigned end = micros();
-	// interrupts();
-	Serial.println(end - start);
-	// pinMode(PIN_READ, INPUT);
-	delayMicroseconds(350); // wait before sending the next thing
-							// delayMicroseconds(LETTER_DELAY); // wait a bit before sending next char
+	// digitalWriteFast(LED_BUILTIN, 0);
+	delayMicroseconds(1000); // wait before sending the next thing
 }
 
 uint16_t busBuffer[16384];
+uint16_t busBufferCopy[16384];
 uint16_t busBufP = 0;
+uint16_t busBufPCopy = 0;
 uint32_t typingCounter = 0;
-bool didSomething = false;
+bool didSomething = true;
 
 uint8_t printA[36] = {33, 0, 11, 0, 33, 0, 12, 0, 4, 0, 70, 16, 33, 0, 3, 0, 1, 0, 10, 0, 33, 0, 12, 0, 4, 0, 68, 128, 33, 0, 12, 0, 4, 0, 6, 16};
 void loop()
@@ -179,7 +170,7 @@ void loop()
 	else
 	{
 		// lastRead = thisRead;
-		if (printSeparator && (++counter >= ((2 << 18) - 1)))
+		if (printSeparator && (++counter >= ((2 << 19) - 1)))
 		{
 			Serial.print(busBufP);
 			Serial.print(" Bus reads in buffer\t");
@@ -231,24 +222,37 @@ void loop()
 			checksum = 0;
 			printSeparator = false;
 
+			memcpy(busBufferCopy, busBuffer, (busBufP + 1) * sizeof(uint16_t));
+			busBufPCopy = busBufP;
+			didSomething = false;
+
 			busBufP = 0;
 		}
 		else
 		{
 			if (!didSomething)
 			{
-				if (++typingCounter > (2 << 21))
+#define RESEND_INTERVAL 500000
+				if (++typingCounter > RESEND_INTERVAL)
 				{
 					Serial.println("TRYING TO DO SOMETHING WITH DA BUS");
-
-					noInterrupts();
-
-					for (int i = 0; i < 36; i++)
+					digitalWriteFast(LED_BUILTIN, 1);
+					// noInterrupts();
+					Serial.print("Let's send this many bytes: ");
+					Serial.println(busBufPCopy);
+					for (int i = 0; i < busBufPCopy; i++)
 					{
-						sendByte(printA[i]);
+						// Serial.print("Byte ");
+						// Serial.print(i);
+						// Serial.print(":");
+						// Serial.println(busBufferCopy[i]);
+						sendByte(busBufferCopy[i]);
 					}
-					interrupts();
+					Serial.println("Sent em");
+					// interrupts();
+					typingCounter = 0;
 					didSomething = true;
+					digitalWriteFast(LED_BUILTIN, 0);
 					/*
 					for(int i = 0; i < 36; i++)
 					{
@@ -256,10 +260,10 @@ void loop()
 					}
 					*/
 				}
-				else if (typingCounter % (1 << 19) == 0)
+				else if (typingCounter % (RESEND_INTERVAL / 100) == 0)
 				{
-					Serial.print("Waiting to do something");
-					Serial.println(typingCounter);
+					Serial.print("Waiting to do something: ");
+					Serial.println(RESEND_INTERVAL - typingCounter);
 				}
 			}
 		}
