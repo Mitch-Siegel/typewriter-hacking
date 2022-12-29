@@ -1,6 +1,6 @@
 {
-    "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=none",
-    "board": "esp32:esp32:esp32doit-devkit-v1",
-    "port": "/dev/ttyUSB1",
-    "sketch": "wheelwriterbusreader/wheelwriterbusreader.ino"
+    "configuration": "cpu=atmega328",
+    "board": "arduino:avr:nano",
+    "port": "/dev/ttyUSB0",
+    "sketch": "wheelwriter-nano-rewrite/wheelwriter-nano-rewrite.ino"
 }
