@@ -137,8 +137,25 @@ int printAscii(char c, int charCount)
 		paper_vert(0, 1);
 		letterNoSpace(asciiTrans[':']);
 		paper_vert(1, 2);
-		return printOne(asciiTrans[' '], charCount);
+		printOne(asciiTrans[' '], charCount);
 	}
+		return charCount + 1;
+		break;
+
+	case '^':
+		{
+			micro_backspace(2);
+			paper_vert(0, 3);
+			letterMicrospace(asciiTrans['.']);
+			paper_vert(0, 1);
+			letterMicrospace(asciiTrans['.']);
+			paper_vert(1, 1);
+			letterMicrospace(asciiTrans['.']);
+			paper_vert(1, 3);
+			letterMicrospace(asciiTrans[' ']);
+			letterMicrospace(asciiTrans[' ']);
+			letterMicrospace(asciiTrans[' ']);
+		}
 		return charCount + 1;
 		break;
 
