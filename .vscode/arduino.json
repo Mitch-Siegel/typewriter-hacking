@@ -3,5 +3,6 @@
     "board": "arduino:avr:nano",
     "port": "/dev/ttyUSB0",
     "sketch": "wheelwriter-nano-rewrite/wheelwriter-nano-rewrite.ino",
-    "output": "/tmp/arduinobuild"
+    "output": "/tmp/arduinobuild",
+    "programmer": "arduino:avrispmkii"
 }

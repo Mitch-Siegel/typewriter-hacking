@@ -16,6 +16,14 @@
 // #define CARRIAGE_WAIT_MULTIPLIER 15
 #define CARRIAGE_WAIT_MULTIPLIER 10
 
+#define busWrite1() PORTD &= 0b11111011
+
+#define busWrite0() PORTD |= 0b00000100
+
+#define busRead() PIND & (1 << (PIN_READ))
+
+#define busWriteBit(command, bitmask) (command & bitmask) ? busWrite1() : busWrite0()
+
 bool bold = false;		  // off to start
 bool underline = false;	  // off to start
 bool reverseText = false; // for printing in reverse
@@ -25,6 +33,14 @@ int LED = 13;			  // the LED light
 #define pulseDelay()                         \
 	{                                        \
 		for (int i = 0; i < 16; i++)         \
+		{                                    \
+			__asm__ __volatile__("nop\n\t"); \
+		}                                    \
+	}
+
+#define pulseDelayForRead()                  \
+	{                                        \
+		for (int i = 0; i < 15; i++)         \
 		{                                    \
 			__asm__ __volatile__("nop\n\t"); \
 		}                                    \
@@ -189,117 +205,268 @@ int printAscii(char c, int charCount)
 	}
 }
 
+// simple FIFO queue using a rolling 1024 char buffer
+class TextQueue
+{
+	char buf[1024];
+	uint16_t nextP; // index of next output value to be gotten
+	uint16_t endP;	// index where next input value will be placed
+
+public:
+	TextQueue()
+	{
+		this->nextP = 0;
+		this->endP = 0;
+	}
+
+	// add to the queue
+	void Add(char c)
+	{
+		this->buf[this->endP++] = c;
+		this->endP %= 1024;
+	}
+
+	// return the number of chars in the queue
+	int Available()
+	{
+		if (this->endP >= this->nextP)
+		{
+			return this->endP - this->nextP;
+		}
+		else
+		{
+			return ((1024 - this->nextP) - this->endP);
+		}
+	}
+
+	// get the next char from the queue
+	char Next()
+	{
+		char toReturn = this->buf[this->nextP++];
+		this->nextP %= 1024;
+		return toReturn;
+	}
+};
+
+TextQueue printQueue = TextQueue();
+
 // the loop routine runs over and over again forever:
 void loop()
 {
 	static int charCount = 0;
-	char buffer[1024]; // let's make sure we actually have some room to buffer text here
+	static uint16_t sinceBusReadCounter = 0;
+
+	// char buffer[1024]; // let's make sure we actually have some room to buffer text here
 	int bufP = 0;
 	// uint8_t readLength = 65;
 	uint8_t bytesRead = 0;
 	uint8_t bufferPos = 0;
 	uint16_t bytesToPrint;
-
-	if (Serial.available() > 0)
+	if (sinceBusReadCounter == 0)
 	{
-		bufP = 0;
-		int retries = 10;
-		while (retries > 0)
+		while (Serial.available())
 		{
-			while (Serial.available())
-			{
-				retries = 10;
-				buffer[bufP++] = Serial.read();
-			}
-			delayMicroseconds(10);
-			if (!Serial.available())
-			{
-				retries--;
-			}
+			printQueue.Add(Serial.read());
 		}
-		Serial.println(bufP);
-		// read one byte, and see if it is a command
-		// Commands:
-		// 0: next two bytes will be the number of characters we are going
-		//    to send
-		// 1: image bits (next two bytes will be the width and height)
-		// 2: Toggle Bold
-		// 3: Toggle Underline
-		// 4: Reset typewriter
-		// 5: TBA
-		// 6: TBA
-		// 7: Beep typewriter (traditional 0x07 beep char)
-		// If the byte is >= 5, just treat as one character
-		// bytesRead = Serial.readBytes(buffer, 1);
 
-		// treat !!x as a command 'x', everything else as text
-		if ((buffer[0] == '!') && (buffer[1] == '!'))
+		if (printQueue.Available())
 		{
-			switch (buffer[2])
-			{
-			default:
-				break;
-			}
-		}
-		else
-		{
+			Serial.println(printQueue.Available());
 			digitalWrite(LED, 1);
 			// Serial.print("Read ");
 			// Serial.println(bytesRead);
 			// Serial.println(" bytes.");
-			for (int i = 0; i < bufP; i++)
+			charCount = printAscii(printQueue.Next(), charCount);
+			// wrap to a new line at 80 characters
+			if (charCount == 80)
 			{
-				charCount = printAscii(buffer[i], charCount);
-				// wrap to a new line at 80 characters
-				if (charCount == 80)
-				{
-					charCount = printOne('\r', charCount);
-				}
+				charCount = printOne('\r', charCount);
 			}
+			digitalWrite(LED, 0);
 		}
-		// Serial.println(int(command));
-
-		/*
-		if (command == 0) { // text to print
-			// look for next two bytesp
-			Serial.readBytes(buffer,2);
-			bytesToPrint = buffer[0] + (buffer[1] << 8); // little-endian
-			charCount = printAllChars(buffer,bytesToPrint,charCount);
-		}
-		else if (command == 1) { // image to print
-			//Serial.println("image");
-			printImage(buffer);
-		} else if (command == 2) {
-			bold = !bold; // toggle
-			Serial.println("ok");
-		} else if (command == 3) {
-			underline = !underline;
-			Serial.println("ok");
-		} else if (command == 4) {
-			// reset the typewriter so we know we are on the begining of a line
-			resetTypewriter();
-			bold = underline = reverseText = false;
-			Serial.println("ok");
-		} else if (command == 5) {
-			// reserved for future use
-			Serial.println("ok");
-		} else if (command == 6) {
-			// reserved for future use
-			Serial.println("ok");
-		} else if (command == 7) {
-			beepTypewriter();
-			Serial.println("ok");
-		}
-		else {
-			charCount = printOne(command,charCount);
-			if(charCount == 10)
-			{
-				charCount = printOne('\r',charCount);
-			}
-		}
-		*/
-		digitalWrite(LED, 0); // turn off LED when we are finished processing
 	}
+	static bool lastRead = 1;
+	bool read;
+	static uint16_t messages[64];
+	static uint8_t messageP = 0;
+	if ((read = busRead()) != lastRead)
+	{
+		noInterrupts();
+#define nop0 __asm__ __volatile__("nop\n\t");	   // 62.5ns
+#define nop1 nop0 nop0 // 125ns
+#define nop2 nop1 nop1 // 250ns
+#define nop3 nop2 nop2 // 500ns
+#define nop4 nop3 nop3 // 1us
+#define nop5 nop4 nop4 // 2us
+#define nop6 nop5 nop5 // 4us
+		uint16_t busRead = read;
+		nop6;
+		nop4;
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		busRead |= busRead();
+		nop6;
+		nop4;
+
+		busRead <<= 1;
+		lastRead = busRead();
+		busRead |= lastRead;
+		nop6;
+		nop4;
+		messages[messageP++] = busRead;
+		interrupts();
+		sinceBusReadCounter = 65000;
+	}
+	else
+	{
+		static bool needNL = false;
+		if (sinceBusReadCounter > 0)
+		{
+			needNL = true;
+			sinceBusReadCounter--;
+		}
+		else
+		{
+			if (needNL)
+			{
+				Serial.print("Messages:");
+				Serial.println(messageP + 1);
+				Serial.println();
+				for (int i = 0; i < messageP; i++)
+				{
+					uint16_t message = messages[i];
+					for (int j = 0; j < 10; j++)
+					{
+						Serial.print(message & 0b1);
+						message >>= 1;
+					}
+					Serial.println();
+				}
+
+				messageP = 0;
+				needNL = false;
+			}
+		}
+	}
+
+	// read one byte, and see if it is a command
+	// Commands:
+	// 0: next two bytes will be the number of characters we are going
+	//    to send
+	// 1: image bits (next two bytes will be the width and height)
+	// 2: Toggle Bold
+	// 3: Toggle Underline
+	// 4: Reset typewriter
+	// 5: TBA
+	// 6: TBA
+	// 7: Beep typewriter (traditional 0x07 beep char)
+	// If the byte is >= 5, just treat as one character
+	// bytesRead = Serial.readBytes(buffer, 1);
+
+	// treat !!x as a command 'x', everything else as text
+	/*
+	if ((buffer[0] == '!') && (buffer[1] == '!'))
+	{
+		switch (buffer[2])
+		{
+		default:
+			break;
+		}
+	}
+	else
+	{
+		digitalWrite(LED, 1);
+		// Serial.print("Read ");
+		// Serial.println(bytesRead);
+		// Serial.println(" bytes.");
+		for (int i = 0; i < bufP; i++)
+		{
+			charCount = printAscii(buffer[i], charCount);
+			// wrap to a new line at 80 characters
+			if (charCount == 80)
+			{
+				charCount = printOne('\r', charCount);
+			}
+		}
+	}
+	*/
+	// Serial.println(int(command));
+
+	/*
+	if (command == 0) { // text to print
+		// look for next two bytesp
+		Serial.readBytes(buffer,2);
+		bytesToPrint = buffer[0] + (buffer[1] << 8); // little-endian
+		charCount = printAllChars(buffer,bytesToPrint,charCount);
+	}
+	else if (command == 1) { // image to print
+		//Serial.println("image");
+		printImage(buffer);
+	} else if (command == 2) {
+		bold = !bold; // toggle
+		Serial.println("ok");
+	} else if (command == 3) {
+		underline = !underline;
+		Serial.println("ok");
+	} else if (command == 4) {
+		// reset the typewriter so we know we are on the begining of a line
+		resetTypewriter();
+		bold = underline = reverseText = false;
+		Serial.println("ok");
+	} else if (command == 5) {
+		// reserved for future use
+		Serial.println("ok");
+	} else if (command == 6) {
+		// reserved for future use
+		Serial.println("ok");
+	} else if (command == 7) {
+		beepTypewriter();
+		Serial.println("ok");
+	}
+	else {
+		charCount = printOne(command,charCount);
+		if(charCount == 10)
+		{
+			charCount = printOne('\r',charCount);
+		}
+	}
+	*/
+	// digitalWrite(LED, 0); // turn off LED when we are finished processing
+	// }
 
 	/*
 	// button for testing
@@ -602,13 +769,6 @@ void print_strln(char *s)
 	send_return(strlen(s));
 }
 
-#define busWrite1() PORTD &= 0b11111011
-
-#define busWrite0() PORTD |= 0b00000100
-
-#define busRead() PIND & (1 << PIN_READ)
-
-#define busWriteBit(command, bitmask) (command & bitmask) ? busWrite1() : busWrite0()
 inline void sendByteOnPin(int command)
 {
 	// This will actually send 10 bytes,
