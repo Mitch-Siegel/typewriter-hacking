@@ -1,0 +1,173 @@
+// c/arduino pseudocode:
+// Thread 1:
+while (1)
+{
+    // shift in the current clock pin state as fast as possible
+    x <<= 1;
+    x |= digitalRead(clockPin);
+}
+
+// Thread 2:
+while (1)
+{
+    counter = 1234; // number of clock cycles we should see before tripping the interrupt
+    while (counter)
+    {
+        // trip on the rising edge
+        if (x == 0b00001111) 
+        {
+            counter--;
+        }
+    }
+    irq();
+}
+
+// pseudoassembly:
+// Thread 1:
+readHigh:
+    ori x, 1 // load 1 into the LSB of x
+readClock:
+    shli x, 1
+    jmp on input pin (110) to readHigh
+    jmp readClock // no jump, so the LSB of x stays 0
+    
+// Thread 2:
+divideClock:
+    y = 1234
+    divideLoop:
+        jne x, 0b00001111, divideLoop
+        dec y
+        jnz y, divideLoop
+    interrupt
+    jmp divideClock
+
+
+// pseudoassembly step 2:
+// use waiting on IRQ flags to communicate state between the 2 state machines
+// Thread/Statemachine 1:
+readHigh:
+    ori x, 1 // load 1 into the LSB of x
+readClock:
+    jne x, 0b00001111
+    mov IRQFlag, 1
+    noSetIRQFlag:
+    shli x, 1
+    jmp on input pin (110) to readHigh
+    jmp readClock // no jump, so the LSB of x stays 0
+    
+// Thread/Statemachine 2:
+divideClock:
+    y = 1234
+    divideLoop:
+        wait IRQFlag // using the mode by which the falg is cleared upon wait condition satisfied
+        dec y
+        jnz y, divideLoop
+    interrupt
+    jmp divideClock
+
+    
+// pseudoassembly step 3:
+// Convert statemachine 1 to nominally workable RP2040 instructions by mov'ing and using ISR to shift in the bus value
+// Thread/Statemachine 1:
+readClock:
+    mov OSR, y // store y in the OSR temporarily
+    mov y, 0b00001111 // load in the literal which indicates an edge on the clock 
+    jmp y!=x // if we don't see an edge, don't set the flag
+    mov IRQFlag, 1
+    noSetIRQFlag:
+    mov r, OSR // restore y from the OSR
+    // could save a few instructions by only copying ISR to x right before the compare and just using the ISR?
+    mov ISR, x // copy the current value of X to the ISR
+    in inputPin, 1 // shift int 1 bit (current state of the input pin)
+    mov x, ISR // copy the updated value back to x
+    jmp readClock // no jump, so the LSB of x stays 0
+    
+// Thread/Statemachine 2:
+divideClock:
+    y = 1234
+    divideLoop:
+        wait IRQFlag // using the mode by which the falg is cleared upon wait condition satisfied
+        dec y
+        jnz y, divideLoop
+    interrupt
+    jmp divideClock
+
+// RP2040 PIO assembly (ish, syntax might not be 100% correct but uses only valid instructions):
+// Thread/Statemachine 1:
+// 11 instructions means that we will need to clock at *at least* 266MHz to sample high and low levels at 12MHz
+// at the scaled down clock of 2MHz this will give us roughly 6 samples per 2MHz cycle though so should be fast enough?
+readClock:
+    mov OSR, Y // store y in the OSR temporarily
+    mov ISR, NULL, :: // set the ISR to all 1's by moving the inverse of NULL into it
+    in NULL, 4 // shift in however many bits of 0's to make the bitmask for the clock edge
+    mov Y, ISR // load in the mask we just made to Y so we can compare
+    jmp Y!=X // if we don't see an edge, don't set the flag
+    mov IRQFlag, 1 // we did see an edge, set the flag and fall through
+    noSetIRQFlag:
+    mov r, OSR // restore y from the OSR
+    mov ISR, X // copy the current value of X to the ISR
+    in inputPin, 1 // shift int 1 bit (current state of the input pin)
+    mov X, ISR // copy the updated value back to x
+    jmp readClock // no jump, so the LSB of x stays 0
+    
+// Thread/Statemachine 2:
+divideClock:
+    set Y, 0b11111 // set Y to some 5-bit number
+    mov ISR, NULL // zero the ISR
+    in Y, 1 // move a 1 into the ISR
+    in NULL, 6 // shift that 1 to the left 6 bits to get 64
+    mov Y, ISR // move the ISR back to Y, this is out counter
+    divideLoop:
+        wait IRQFlag // using the mode by which the falg is cleared upon wait condition satisfied
+        jmp Y-- divideLoop // decrement Y and loop again if not zero
+    setBaudIRQFlag // set the IRQ flag for someone else to deal with the fact that one baud's worth of time has passed
+    jmp divideClock // do it all over again
+
+
+
+// RP2040 PIO assembly optimization 1:
+// Thread/Statemachine 1:
+readClock:
+    mov OSR, ISR // ISR to OSR
+    in inputPin, 1 // shift int 1 bit (current state of the input pin)
+    jmp inputPin
+    out Y, 1
+    jmp Y!=X readClock // if we don't see an edge, don't set the flag
+    irq IRQFlag
+    jmp readClock
+
+/*
+in inputPin, 1 // shift int 1 bit (current state of the input pin)
+    mov OSR, ISR // ISR to OSR
+    out Y, 1
+    out X, 1
+    jmp Y!=X readClock // if we don't see an edge, don't set the flag
+    irq IRQFlag
+    jmp readClock*/
+    
+/*
+
+• Condition:
+000: (no condition): Always
+001: !X: scratch X zero
+010: X--: scratch X non-zero, prior to decrement
+011: !Y: scratch Y zero
+100: Y--: scratch Y non-zero, prior to decrement
+101: X!=Y: scratch X not equal scratch Y
+110: PIN: branch on input pin
+111: !OSRE: output shift register not empty*/
+    
+// Thread/Statemachine 2:
+divideClock:
+    set Y, 0b11111 // set Y to some 5-bit number
+    mov X, ISR // copy ISR to X
+    mov ISR, NULL // zero the ISR
+    in Y, 1 // move a 1 into the ISR
+    in NULL, 6 // shift that 1 to the left 6 bits to get 64
+    mov Y, ISR // move the ISR back to Y, this is out counter
+    mov ISR, X // copy X back to the ISR
+    divideLoop:
+        wait IRQFlag // using the mode by which the falg is cleared upon wait condition satisfied
+        jmp Y-- divideLoop // decrement Y and loop again if not zero
+    setBaudIRQFlag // set the IRQ flag for someone else to deal with the fact that one baud's worth of time has passed
+    jmp divideClock // do it all over again

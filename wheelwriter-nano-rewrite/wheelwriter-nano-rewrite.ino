@@ -205,22 +205,27 @@ int printAscii(char c, int charCount)
 	}
 }
 
-// simple FIFO queue using a rolling 1024 char buffer
-class TextQueue
+template <class T>
+class Queue
 {
-	char buf[1024];
+private:
+	T *buf;
 	uint16_t nextP; // index of next output value to be gotten
 	uint16_t endP;	// index where next input value will be placed
 
 public:
-	TextQueue()
+	Queue(size_t size)
 	{
-		this->nextP = 0;
-		this->endP = 0;
+		this->buf = new T[size];
+	}
+
+	~Queue()
+	{
+		delete[] this->buf;
 	}
 
 	// add to the queue
-	void Add(char c)
+	void Add(T c)
 	{
 		this->buf[this->endP++] = c;
 		this->endP %= 1024;
@@ -239,16 +244,24 @@ public:
 		}
 	}
 
-	// get the next char from the queue
-	char Next()
+	// get the next char from the queue (should always be wrapped in an available() check first as this will permit overruns)
+	T Next()
 	{
-		char toReturn = this->buf[this->nextP++];
+		T toReturn = this->buf[this->nextP++];
 		this->nextP %= 1024;
 		return toReturn;
 	}
+
+	void Clear()
+	{
+		this->nextP = this->endP;
+	}
+
 };
 
-TextQueue printQueue = TextQueue();
+Queue<char> printQueue = Queue<char>(1024);
+Queue<uint16_t> busReadQueue = Queue<uint16_t>(128);
+
 
 // the loop routine runs over and over again forever:
 void loop()
@@ -292,13 +305,13 @@ void loop()
 	if ((read = busRead()) != lastRead)
 	{
 		noInterrupts();
-#define nop0 __asm__ __volatile__("nop\n\t");	   // 62.5ns
-#define nop1 nop0 nop0 // 125ns
-#define nop2 nop1 nop1 // 250ns
-#define nop3 nop2 nop2 // 500ns
-#define nop4 nop3 nop3 // 1us
-#define nop5 nop4 nop4 // 2us
-#define nop6 nop5 nop5 // 4us
+#define nop0 __asm__ __volatile__("nop\n\t"); // 62.5ns
+#define nop1 nop0 nop0						  // 125ns
+#define nop2 nop1 nop1						  // 250ns
+#define nop3 nop2 nop2						  // 500ns
+#define nop4 nop3 nop3						  // 1us
+#define nop5 nop4 nop4						  // 2us
+#define nop6 nop5 nop5						  // 4us
 		uint16_t busRead = read;
 		nop6;
 		nop4;

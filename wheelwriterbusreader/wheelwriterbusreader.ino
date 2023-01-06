@@ -5,7 +5,7 @@
 
 // DueTimer readTimer = DueTimer(0);
 
-inline bool readInPinDMA()
+inline bool IRAM_ATTR readInPinDMA()
 {
 	return (REG_READ(GPIO_IN_REG) >> PIN_READ) & 0b1;
 	// return ((REG_PIOB_PDSR) >> 25) & 0x01;
@@ -19,16 +19,7 @@ void IRAM_ATTR digitalWriteFast(uint8_t pin, uint8_t val)
 		{
 			GPIO.out_w1ts = ((uint32_t)1 << pin);
 		}
-		else if (pin < 34)
-		{
-			GPIO.out1_w1ts.val = ((uint32_t)1 << (pin - 32));
-		}
-	}
-	else
-	{
-		if (pin < 32)
-		{
-			GPIO.out_w1tc = ((uint32_t)1 << pin);
+		else if (pin < 34)setCpuFrequencyMhz(240);)1 << pin);
 		}
 		else if (pin < 34)
 		{

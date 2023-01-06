@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "esp32-hal-gpio.h": "c"
+        "esp32-hal-gpio.h": "c",
+        "rp2040-pio-idea": "cpp"
     }
 }

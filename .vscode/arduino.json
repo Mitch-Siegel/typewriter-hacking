@@ -1,8 +1,8 @@
 {
-    "configuration": "cpu=atmega328",
-    "board": "arduino:avr:nano",
-    "port": "/dev/ttyUSB0",
-    "sketch": "wheelwriter-nano-rewrite/wheelwriter-nano-rewrite.ino",
+    "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=none",
+    "board": "esp32:esp32:esp32doit-devkit-v1",
+    "port": "/dev/ttyS9",
+    "sketch": "clock-sniffer/clock-sniffer.ino",
     "output": "/tmp/arduinobuild",
     "programmer": "arduino:avrispmkii"
 }
