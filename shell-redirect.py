@@ -4,38 +4,35 @@ import time
 import os
 import sys
 
+import select
+
+import re
+
 
 ser = serial.Serial("/dev/ttyUSB0", 115200)
 
 time.sleep(2)
+ser.write("\r".encode())
 print("Serial opened: " + ser.name)
 # print("bitch asse".encode())
 # ser.write("bitch asse".encode())
 
+# from https://stackoverflow.com/questions/616645/how-to-duplicate-sys-stdout-to-a-log-file
 
-# Based on https://gist.github.com/327585 by Anand Kunal, from http://www.tentech.ca/2011/05/stream-tee-in-python-saving-stdout-to-file-while-keeping-the-console-alive/
-class stream_tee(object):
-    def __init__(self, stream1, stream2):
-        self.stream1 = stream1
-        self.stream2 = stream2
-        self.__missing_method_name = None # Hack!
- 
-    def __getattribute__(self, name):
-        return object.__getattribute__(self, name)
- 
-    def __getattr__(self, name):
-        self.__missing_method_name = name # Could also be a property
-        return getattr(self, '__methodmissing__')
- 
-    def __methodmissing__(self, *args, **kwargs):
-            # Emit method call to the log copy
-            callable2 = getattr(self.stream2, self.__missing_method_name)
-            callable2(*args, **kwargs)
- 
-            # Emit method call to stdout (stream 1)
-            callable1 = getattr(self.stream1, self.__missing_method_name)
-            return callable1(*args, **kwargs)
 
+class Logger(object):
+    def __init__(self):
+        self.terminal = sys.stdout
+
+    def write(self, message):
+        self.terminal.write(message)
+        ser.write(message.encode())
+
+    def flush():
+        self.terminal.flush()
+        ser.flush()
+
+# sys.stdout = Logger()
 
 
 """
@@ -46,6 +43,8 @@ from https://danishpraka.sh/2018/09/27/shell-in-python.html
 
 def execute_command(command):
     ser.write((command + "\n").encode())
+    if(command == ''):
+        return
     """execute commands and handle piping"""
     try:
         if "|" in command:
@@ -85,10 +84,46 @@ def execute_command(command):
             os.close(s_in)
             os.close(s_out)
         else:
-            subprocess.run(command.split(" "))
-            
-    except Exception:
-        print("psh: command not found: {}".format(command))
+            # ls has special behavior - when not using '-l' newlines are not rendered
+            stripNL = ("ls" in command and (len(re.findall(r"-[^\s]*l", command)) == 0))
+            p = subprocess.run(command.split(" "), capture_output=True, text=True)
+
+            stdoutStr = "".join(p.stdout)
+            stderrStr = "".join(p.stderr)
+            if (stripNL):
+                stdoutStr = stdoutStr.replace("\n", "  ")
+                if (stdoutStr != ''):
+                    stdoutStr += "\n"
+                stderrStr = stderrStr.replace("\n", "  ")
+                if (stderrStr != ''):
+                    stderrStr += "\n"
+
+
+            sys.stdout.write(stdoutStr)
+            sys.stderr.write(stderrStr)
+            ser.write(stdoutStr.encode())
+            ser.write(stderrStr.encode())
+            sys.stdout.flush()
+            ser.flush()
+
+    except PermissionError as e:
+        errstr = e.strerror + "\n"
+        sys.stderr.write(errstr)
+        ser.write(errstr.encode())
+        sys.stdout.flush()
+        ser.flush()
+
+    except FileNotFoundError as e:
+        errstr = e.strerror + ": " + command + "\n"
+        sys.stdout.write(errstr)
+        ser.write(errstr.encode())
+        sys.stdout.flush()
+        ser.flush()
+
+        # print("psh: command or file not found: {}".format(command))
+
+    # except Exception:
+    # print("psh: command not found: {}".format(command))
 
 
 def psh_cd(path):
@@ -108,12 +143,9 @@ def main():
     while True:
         cwd = os.getcwd()
         if (cwd == '/'):
-            printedcwd = cwd
+            print(cwd, end='')
         else:
-            printedcwd = cwd.split('/')[-1]
-
-        print(printedcwd, end = '')
-        ser.write((printedcwd + " $ ").encode())
+            print(cwd.split('/')[-1], end='')
 
         inp = input(" $ ")
         if inp == "exit":
@@ -131,4 +163,4 @@ if '__main__' == __name__:
 
 ser.flush()
 ser.close()
-print("Serial closed: " + ser.name);
+print("Serial closed: " + ser.name)

@@ -5,9 +5,15 @@
 	Pin 2: ALSO connected to the bus, but listens instead of
 				 sending data
  */
+#include <LedControl.h>
 
 #define PIN_READ 3
 #define PIN_WRITE 4;
+
+#define DIN 6
+#define CS 7
+#define CLK 8
+LedControl sseg(DIN, CLK, CS);
 
 // #include<PinChangeInt.h>
 
@@ -27,7 +33,9 @@
 bool bold = false;		  // off to start
 bool underline = false;	  // off to start
 bool reverseText = false; // for printing in reverse
-int LED = 13;			  // the LED light
+bool wordWrap = true;	  // when printing words, dump out to a newline if the word will span the end of one line and the beginning of the next
+
+#define LED 13 // the LED light
 
 // on an Arduino Nano, ATmega328, the following will delay roughly 5.25us
 #define pulseDelay()                         \
@@ -71,11 +79,18 @@ byte asciiTrans[128] =
 	 //     p     q     r     s     t     u     v     w     x     y     z     {     |     }     ~    DEL
 	 0x5c, 0x52, 0x03, 0x06, 0x5e, 0x5b, 0x53, 0x55, 0x51, 0x58, 0x54, 0x00, 0x00, 0x00, 0x00, 0x00}; // 7
 
+byte asciiTransRev[128];
+
 void setup()
 {
 	// initialize serial communication at 115200 bits per second:
 	Serial.begin(115200);
 	Serial.setTimeout(25);
+
+	for (int i = 0; i < 0x100; i++)
+	{
+		asciiTransRev[asciiTrans[i]] = i;
+	}
 
 	// Digital pins
 	pinMode(2, OUTPUT);		  // pin that will trigger the bus
@@ -86,6 +101,8 @@ void setup()
 
 	// start the input pin off (meaning the bus is high, normal state)
 	PORTD &= ~(1 << PIN_READ - 1);
+	sseg.shutdown(0, false);
+	sseg.clearDisplay(0);
 }
 
 // test print string:
@@ -210,6 +227,7 @@ class Queue
 {
 private:
 	T *buf;
+	size_t size;
 	uint16_t nextP; // index of next output value to be gotten
 	uint16_t endP;	// index where next input value will be placed
 
@@ -217,6 +235,7 @@ public:
 	Queue(size_t size)
 	{
 		this->buf = new T[size];
+		this->size = size;
 	}
 
 	~Queue()
@@ -228,7 +247,7 @@ public:
 	void Add(T c)
 	{
 		this->buf[this->endP++] = c;
-		this->endP %= 1024;
+		this->endP %= this->size;
 	}
 
 	// return the number of chars in the queue
@@ -240,7 +259,7 @@ public:
 		}
 		else
 		{
-			return ((1024 - this->nextP) - this->endP);
+			return ((this->size - this->nextP) - this->endP);
 		}
 	}
 
@@ -248,56 +267,99 @@ public:
 	T Next()
 	{
 		T toReturn = this->buf[this->nextP++];
-		this->nextP %= 1024;
+		this->nextP %= this->size;
 		return toReturn;
+	}
+
+	T Lookahead(size_t n)
+	{
+		return this->buf[(this->nextP + n) % this->size];
 	}
 
 	void Clear()
 	{
 		this->nextP = this->endP;
 	}
-
 };
 
 Queue<char> printQueue = Queue<char>(1024);
 Queue<uint16_t> busReadQueue = Queue<uint16_t>(128);
 
+void LCD_WriteNumber(int number, int nDigits, int startDigit)
+{
+	for (int i = 0; i < nDigits; i++)
+	{
+		sseg.setDigit(0, i + startDigit, number % 10, false);
+		number /= 10;
+	}
+}
 
 // the loop routine runs over and over again forever:
 void loop()
 {
 	static int charCount = 0;
-	static uint16_t sinceBusReadCounter = 0;
 
 	// char buffer[1024]; // let's make sure we actually have some room to buffer text here
-	int bufP = 0;
 	// uint8_t readLength = 65;
-	uint8_t bytesRead = 0;
-	uint8_t bufferPos = 0;
-	uint16_t bytesToPrint;
-	if (sinceBusReadCounter == 0)
+	while (Serial.available())
 	{
-		while (Serial.available())
+		printQueue.Add(Serial.read());
+	}
+	size_t available = printQueue.Available();
+	LCD_WriteNumber(available, 4, 0);
+
+	if (available)
+	{
+		digitalWrite(LED, 1);
+		static bool skipNext = false;
+
+		if (skipNext)
 		{
-			printQueue.Add(Serial.read());
+			printQueue.Next();
+			skipNext = false;
+			return;
 		}
 
-		if (printQueue.Available())
+		// Serial.println(printQueue.Available());
+		// Serial.print("Read ");
+		// Serial.println(bytesRead);
+		// Serial.println(" bytes.");
+
+		if (wordWrap && isWhitespace(printQueue.Lookahead(0)))
 		{
-			Serial.println(printQueue.Available());
-			digitalWrite(LED, 1);
-			// Serial.print("Read ");
-			// Serial.println(bytesRead);
-			// Serial.println(" bytes.");
-			charCount = printAscii(printQueue.Next(), charCount);
-			// wrap to a new line at 80 characters
-			if (charCount == 80)
+			int charsRemaining = 80 - charCount;
+			for (size_t i = 1; i < available; i++)
 			{
-				charCount = printOne('\r', charCount);
+				if (isWhitespace(printQueue.Lookahead(i)))
+				{
+					break;
+				}
+				else
+				{
+					charsRemaining--;
+				}
 			}
-			digitalWrite(LED, 0);
+			if (charsRemaining <= 0)
+			{
+				skipNext = true;
+				charCount = printOne('\r', charCount);
+				return;
+			}
+		}
+
+		charCount = printAscii(printQueue.Next(), charCount);
+		// wrap to a new line at 80 characters
+		if (charCount == 80)
+		{
+			charCount = printOne('\r', charCount);
 		}
 	}
+	else
+	{
+		digitalWrite(LED, 0);
+	}
+
+	/*
 	static bool lastRead = 1;
 	bool read;
 	static uint16_t messages[64];
@@ -364,37 +426,7 @@ void loop()
 		interrupts();
 		sinceBusReadCounter = 65000;
 	}
-	else
-	{
-		static bool needNL = false;
-		if (sinceBusReadCounter > 0)
-		{
-			needNL = true;
-			sinceBusReadCounter--;
-		}
-		else
-		{
-			if (needNL)
-			{
-				Serial.print("Messages:");
-				Serial.println(messageP + 1);
-				Serial.println();
-				for (int i = 0; i < messageP; i++)
-				{
-					uint16_t message = messages[i];
-					for (int j = 0; j < 10; j++)
-					{
-						Serial.print(message & 0b1);
-						message >>= 1;
-					}
-					Serial.println();
-				}
-
-				messageP = 0;
-				needNL = false;
-			}
-		}
-	}
+	*/
 
 	// read one byte, and see if it is a command
 	// Commands:
