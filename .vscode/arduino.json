@@ -1,7 +1,7 @@
 {
     "configuration": "FlashFreq=80,UploadSpeed=921600,DebugLevel=none",
     "board": "esp32:esp32:esp32doit-devkit-v1",
-    "port": "/dev/ttyS9",
+    "port": "/dev/ttyACM1",
     "sketch": "clock-sniffer/clock-sniffer.ino",
     "output": "/tmp/arduinobuild",
     "programmer": "arduino:avrispmkii"
