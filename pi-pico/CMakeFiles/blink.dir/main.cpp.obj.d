@@ -73,7 +73,7 @@ CMakeFiles/blink.dir/main.cpp.obj: \
  /usr/share/pico-sdk/src/rp2040/hardware_structs/include/hardware/structs/uart.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/uart.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/dreq.h \
- /usr/share/pico-sdk/src/rp2_common/pico_stdio_uart/include/pico/stdio_uart.h \
+ /usr/share/pico-sdk/src/rp2_common/pico_stdio_usb/include/pico/stdio_usb.h \
  /usr/share/pico-sdk/src/rp2_common/hardware_pio/include/hardware/pio.h \
  /usr/share/pico-sdk/src/rp2040/hardware_structs/include/hardware/structs/pio.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/pio.h \

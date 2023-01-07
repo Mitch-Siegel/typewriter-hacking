@@ -1,3 +1,4 @@
+; set irq flag 0 each time a clock edge is detected (8 PIOASM instructions, 24 remaining)
 .program edgedetector
 
 ; Turn on LED for 100 cycles and off for 100 cycles.
@@ -5,15 +6,15 @@
 
 ; Thread/Statemachine 1 (clock edge detector):
 .wrap_target
+setFlag:    
+    irq set 6 ; use 6 for read timing
+    irq set 5 ; use 5 for write timing
 readClock:
     in PINS, 1 ; shift in 1 bit (current state of the input pin)
     mov OSR, ISR ; OSR <- ISR
     out X, 1
     out Y, 1
     jmp X!=Y setFlag ; if we don't see an edge, don't set the flag
-    jmp readClock
-    setFlag:    
-    irq set 0
     jmp readClock
 .wrap
 
@@ -44,21 +45,17 @@ void edgedetector_program_init(PIO pio, uint sm, uint offset, uint pin, float di
 
 %}
 
-
+; divide the clock from the edgedetector program, use it to set irq flag 1 each baud (5 PIOASM instructions, 19 remaining)
 .program clkdivider
 
-; Thread/Statemachine 1 (clock edge detector):
+; Thread/Statemachine 2 (clock divider / baud IRQ):
 .wrap_target
     divideClock:
-    set Y, 0b01010          ; set Y to some 5-bit number (21 for (2MHz * 2 (because set irq0 on each edge)) / 21 = 5.25us plus change for the other asm ops)
-    ;mov ISR, NULL           ; zero the ISR
-    ;in Y, 1                 ; move a 1 into the ISR
-    ;in NULL, 6              ; shift that 1 to the left 6 bits to get 64
-    ;mov Y, ISR              ; move the ISR back to Y, this is out counter
+    set Y, 0b10100          ; set Y to some 5-bit number (21 for (2MHz * 2 (because set irq0 on each edge)) / 21 = 5.25us plus change for the other asm ops)
     divideLoop:
-        wait 1 irq 0        ; using the mode by which the falg is cleared upon wait condition satisfied
+        wait 1 irq 6        ; using the mode by which the falg is cleared upon wait condition satisfied
         jmp Y-- divideLoop  ; decrement Y and loop again if not zero
-    irq set 1                   ; set the IRQ flag for someone else to deal with the fact that one baud's worth of time has passed
+    irq set 7                   ; set the IRQ flag for someone else to deal with the fact that one baud's worth of time has passed
     jmp divideClock         ; do it all over again
 
 .wrap
@@ -83,4 +80,95 @@ void clkdivider_program_init(PIO pio, uint sm, uint offset, float div) {
 
 %}
 
+
+.program busreader
+
+; Thread/Statemachine 3, (bus reader) (10 PIOASM instructions, 9 remaining)
+.wrap_target
+busreader:
+    wait 0 irq 4 ; make sure IRQ4 is 0 (we are not transmitting)
+    jmp PIN busreader ; loop back to busreader while the input pin is high (start bit is 0)
+    set X, 9
+    mov ISR, NULL
+    rcvLoop:
+        wait 1 irq 7     ; wait for the next baud
+        in PINS, 1
+        jmp X-- rcvLoop  ; decrement X and loop again if not zero
+    push noblock         ;push the serial word we just read to the RX FIFO
+    irq set 1            ; set the IRQ flag to indicate that we have just read in an entire word
+    jmp busreader
+.wrap
+
+% c-sdk {
+
+// Helper function (for use in C program) to initialize this PIO program
+void busreader_program_init(PIO pio, uint sm, uint offset, float div, uint busReadPin) {
+
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in blink.pio.h.
+    pio_sm_config c = busreader_program_get_default_config(offset);
+
+    sm_config_set_in_shift(&c, false, false, 32);
+
+    // Allow PIO to control GPIO pin
+    pio_gpio_init(pio, busReadPin);
+
+    // Connect pin to IN pin (control with 'in' instruction)
+    sm_config_set_in_pins(&c, busReadPin);
+
+    // also set the input pin as our jump pin so we can loop while it's high
+    sm_config_set_jmp_pin(&c, busReadPin);
+    
+    // Set the clock divider for the state machine
+    sm_config_set_clkdiv(&c, div);
+
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+%}
+
+
+.program buswriter
+
+; Thread/Statemachine 4, (bus writer)
+.wrap_target
+buswriter:
+    pull block
+    ;irq set 4
+    set X, 9
+    rcvLoop:
+        out Y 1
+        mov Y, !Y
+        mov PINS, Y
+        wait 1 irq 6     ; wait for the next baud
+        jmp X-- rcvLoop  ; decrement X and loop again if not zero
+    ;wait 1 irq 4
+    jmp buswriter
+.wrap
+
+% c-sdk {
+
+// Helper function (for use in C program) to initialize this PIO program
+void buswriter_program_init(PIO pio, uint sm, uint offset, float div, uint busWritePin) {
+
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in blink.pio.h.
+    pio_sm_config c = buswriter_program_get_default_config(offset);
+
+    sm_config_set_out_shift(&c, true, false, 32);
+
+    // Allow PIO to control GPIO pin
+    pio_gpio_init(pio, busWritePin);
+
+    sm_config_set_out_pins(&c, busWritePin, 1);
+
+    // Set the clock divider for the state machine
+    sm_config_set_clkdiv(&c, div);
+
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+%}
 

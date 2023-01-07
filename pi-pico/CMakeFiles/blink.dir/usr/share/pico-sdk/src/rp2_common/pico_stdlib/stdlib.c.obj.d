@@ -49,10 +49,14 @@ CMakeFiles/blink.dir/usr/share/pico-sdk/src/rp2_common/pico_stdlib/stdlib.c.obj:
  /usr/share/pico-sdk/src/rp2040/hardware_structs/include/hardware/structs/uart.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/uart.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/dreq.h \
- /usr/share/pico-sdk/src/rp2_common/pico_stdio_uart/include/pico/stdio_uart.h \
+ /usr/share/pico-sdk/src/rp2_common/pico_stdio_usb/include/pico/stdio_usb.h \
  /usr/share/pico-sdk/src/rp2_common/hardware_pll/include/hardware/pll.h \
  /usr/share/pico-sdk/src/rp2040/hardware_structs/include/hardware/structs/pll.h \
  /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/pll.h \
  /usr/share/pico-sdk/src/rp2_common/hardware_clocks/include/hardware/clocks.h \
  /usr/share/pico-sdk/src/rp2040/hardware_structs/include/hardware/structs/clocks.h \
- /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/clocks.h
+ /usr/share/pico-sdk/src/rp2040/hardware_regs/include/hardware/regs/clocks.h \
+ /usr/share/pico-sdk/src/common/pico_binary_info/include/pico/binary_info.h \
+ /usr/share/pico-sdk/src/common/pico_binary_info/include/pico/binary_info/defs.h \
+ /usr/share/pico-sdk/src/common/pico_binary_info/include/pico/binary_info/structure.h \
+ /usr/share/pico-sdk/src/common/pico_binary_info/include/pico/binary_info/code.h

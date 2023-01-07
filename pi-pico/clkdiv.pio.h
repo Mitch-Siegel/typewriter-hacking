@@ -17,14 +17,14 @@
 
 static const uint16_t edgedetector_program_instructions[] = {
             //     .wrap_target
-    0x4001, //  0: in     pins, 1                    
-    0xa0e6, //  1: mov    osr, isr                   
-    0x6021, //  2: out    x, 1                       
-    0x6041, //  3: out    y, 1                       
-    0x00a6, //  4: jmp    x != y, 6                  
-    0x0000, //  5: jmp    0                          
-    0xc000, //  6: irq    nowait 0                   
-    0x0000, //  7: jmp    0                          
+    0xc006, //  0: irq    nowait 6                   
+    0xc005, //  1: irq    nowait 5                   
+    0x4001, //  2: in     pins, 1                    
+    0xa0e6, //  3: mov    osr, isr                   
+    0x6021, //  4: out    x, 1                       
+    0x6041, //  5: out    y, 1                       
+    0x00a0, //  6: jmp    x != y, 0                  
+    0x0002, //  7: jmp    2                          
             //     .wrap
 };
 
@@ -69,10 +69,10 @@ void edgedetector_program_init(PIO pio, uint sm, uint offset, uint pin, float di
 
 static const uint16_t clkdivider_program_instructions[] = {
             //     .wrap_target
-    0xe04a, //  0: set    y, 10                      
-    0x20c0, //  1: wait   1 irq, 0                   
+    0xe054, //  0: set    y, 20                      
+    0x20c6, //  1: wait   1 irq, 6                   
     0x0081, //  2: jmp    y--, 1                     
-    0xc001, //  3: irq    nowait 1                   
+    0xc007, //  3: irq    nowait 7                   
     0x0000, //  4: jmp    0                          
             //     .wrap
 };
@@ -96,6 +96,111 @@ void clkdivider_program_init(PIO pio, uint sm, uint offset, float div) {
     // generated in blink.pio.h.
     pio_sm_config c = clkdivider_program_get_default_config(offset);
     sm_config_set_in_shift(&c, false, false, 32);
+    // Set the clock divider for the state machine
+    sm_config_set_clkdiv(&c, div);
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+#endif
+
+// --------- //
+// busreader //
+// --------- //
+
+#define busreader_wrap_target 0
+#define busreader_wrap 9
+
+static const uint16_t busreader_program_instructions[] = {
+            //     .wrap_target
+    0x2044, //  0: wait   0 irq, 4                   
+    0x00c0, //  1: jmp    pin, 0                     
+    0xe029, //  2: set    x, 9                       
+    0xa0c3, //  3: mov    isr, null                  
+    0x20c7, //  4: wait   1 irq, 7                   
+    0x4001, //  5: in     pins, 1                    
+    0x0044, //  6: jmp    x--, 4                     
+    0x8000, //  7: push   noblock                    
+    0xc001, //  8: irq    nowait 1                   
+    0x0000, //  9: jmp    0                          
+            //     .wrap
+};
+
+#if !PICO_NO_HARDWARE
+static const struct pio_program busreader_program = {
+    .instructions = busreader_program_instructions,
+    .length = 10,
+    .origin = -1,
+};
+
+static inline pio_sm_config busreader_program_get_default_config(uint offset) {
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_wrap(&c, offset + busreader_wrap_target, offset + busreader_wrap);
+    return c;
+}
+
+// Helper function (for use in C program) to initialize this PIO program
+void busreader_program_init(PIO pio, uint sm, uint offset, float div, uint busReadPin) {
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in blink.pio.h.
+    pio_sm_config c = busreader_program_get_default_config(offset);
+    sm_config_set_in_shift(&c, false, false, 32);
+    // Allow PIO to control GPIO pin
+    pio_gpio_init(pio, busReadPin);
+    // Connect pin to IN pin (control with 'in' instruction)
+    sm_config_set_in_pins(&c, busReadPin);
+    // also set the input pin as our jump pin so we can loop while it's high
+    sm_config_set_jmp_pin(&c, busReadPin);
+    // Set the clock divider for the state machine
+    sm_config_set_clkdiv(&c, div);
+    // Load configuration and jump to start of the program
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+#endif
+
+// --------- //
+// buswriter //
+// --------- //
+
+#define buswriter_wrap_target 0
+#define buswriter_wrap 7
+
+static const uint16_t buswriter_program_instructions[] = {
+            //     .wrap_target
+    0x80a0, //  0: pull   block                      
+    0xe029, //  1: set    x, 9                       
+    0x6041, //  2: out    y, 1                       
+    0xa04a, //  3: mov    y, !y                      
+    0xa002, //  4: mov    pins, y                    
+    0x20c6, //  5: wait   1 irq, 6                   
+    0x0042, //  6: jmp    x--, 2                     
+    0x0000, //  7: jmp    0                          
+            //     .wrap
+};
+
+#if !PICO_NO_HARDWARE
+static const struct pio_program buswriter_program = {
+    .instructions = buswriter_program_instructions,
+    .length = 8,
+    .origin = -1,
+};
+
+static inline pio_sm_config buswriter_program_get_default_config(uint offset) {
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_wrap(&c, offset + buswriter_wrap_target, offset + buswriter_wrap);
+    return c;
+}
+
+// Helper function (for use in C program) to initialize this PIO program
+void buswriter_program_init(PIO pio, uint sm, uint offset, float div, uint busWritePin) {
+    // Sets up state machine and wrap target. This function is automatically
+    // generated in blink.pio.h.
+    pio_sm_config c = buswriter_program_get_default_config(offset);
+    sm_config_set_out_shift(&c, true, false, 32);
+    // Allow PIO to control GPIO pin
+    pio_gpio_init(pio, busWritePin);
+    sm_config_set_out_pins(&c, busWritePin, 1);
     // Set the clock divider for the state machine
     sm_config_set_clkdiv(&c, div);
     // Load configuration and jump to start of the program
