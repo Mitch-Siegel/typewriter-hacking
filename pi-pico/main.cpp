@@ -233,7 +233,7 @@ void backspace_no_correct()
     // sleep_ms(LETTER_DELAY / 10); // a bit more time
 }
 
-void send_return(int numChars)
+void send_crlf(int numChars)
 {
     // calculations for further down
     int byte1 = (numChars * 5) >> 7;
@@ -405,7 +405,7 @@ int printOne(uint8_t charToPrint, int charCount)
 
     if (charToPrint == '\r' or charToPrint == '\n')
     {
-        send_return(charCount);
+        send_crlf(charCount);
         charCount = 0;
     }
     else if (charToPrint == '\200' or charToPrint == '\201')

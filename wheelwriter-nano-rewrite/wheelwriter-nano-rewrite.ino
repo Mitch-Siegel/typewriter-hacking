@@ -6,6 +6,7 @@
 				 sending data
  */
 #include <LedControl.h>
+#include <GyverTimers.h>
 
 #define PIN_READ 3
 #define PIN_WRITE 4;
@@ -37,8 +38,40 @@ bool wordWrap = true;	  // when printing words, dump out to a newline if the wor
 
 #define LED 13 // the LED light
 
+// #define nop1_help __asm__ __volatile__("nop\n\t"); // 62.5ns	or 1 cycles
+#define nop1_help "nop\n\t"				 // 62.5ns	or 1 cycles
+#define nop2_help nop1_help nop1_help	 // 125ns	or 2 cycles
+#define nop4_help nop2_help nop2_help	 // 250ns	or 4 cycles
+#define nop8_help nop4_help nop4_help	 // 500ns	or 8 cycles
+#define nop16_help nop8_help nop8_help	 // 1us	or 16 cycles
+#define nop32_help nop16_help nop16_help // 2us	or 32 cycles
+#define nop64_help nop32_help nop32_help // 4us	or 64 cycles
+
+#define nop1 __asm__ __volatile__(nop1_help);	// 62.5ns	or 1 cycles
+#define nop2 __asm__ __volatile__(nop2_help);	// 125ns	or 2 cycles
+#define nop4 __asm__ __volatile__(nop4_help);	// 250ns	or 4 cycles
+#define nop8 __asm__ __volatile__(nop8_help);	// 500ns	or 8 cycles
+#define nop16 __asm__ __volatile__(nop16_help); // 1us	or 16 cycles
+#define nop32 __asm__ __volatile__(nop32_help); // 2us	or 32 cycles
+#define nop64 __asm__ __volatile__(nop64_help); // 4us	or 64 cycles
+
+void pulseDelay()
+{
+	nop64; // 4us
+	nop8;  // 0.5us
+}
+
 // on an Arduino Nano, ATmega328, the following will delay roughly 5.25us
-#define pulseDelay()                         \
+// #define pulseDelay()                         \
+	// {                                        \
+		// for (int i = 0; i < 16; i++)         \
+		// {                                    \
+			// __asm__ __volatile__("nop\n\t"); \
+		// }                                    \
+	// }
+
+// on an Arduino Nano, ATmega328, the following will delay roughly 5.25us
+#define pulseDelayJank()                     \
 	{                                        \
 		for (int i = 0; i < 16; i++)         \
 		{                                    \
@@ -210,6 +243,38 @@ int printAscii(char c, int charCount)
 		letterMicrospace(asciiTrans[']']);
 		letterNoSpace(asciiTrans[')']);
 		letterMicrospace(asciiTrans['-']);
+		letterMicrospace(asciiTrans[' ']);
+		letterMicrospace(asciiTrans[' ']);
+	}
+		return charCount + 1;
+		break;
+
+	case '~':
+	{
+		paper_vert(0, 5);
+		letterNoSpace(asciiTrans['_']);
+		paper_vert(1, 2);
+		micro_backspace(2);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 2);
+		letterMicrospace(asciiTrans[' ']);
+		letterMicrospace(asciiTrans[' ']);
+		letterMicrospace(asciiTrans[' ']);
+	}
+		return charCount + 1;
+		break;
+
+	case '`':
+	{
+		paper_vert(0, 5);
+		letterMicrospace(asciiTrans['.']);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 4);
+		// letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
 	}
@@ -525,6 +590,13 @@ void loop()
 	*/
 	// delay(10);
 }
+/*
+int plusOne(int a)
+{
+	return a + 1;
+}
+
+*/
 
 int printOne(byte charToPrint, int charCount)
 {
@@ -538,26 +610,53 @@ int printOne(byte charToPrint, int charCount)
 		charToPrint += 256; // correct for signed char
 	}*/
 
-	if (charToPrint == '\r' or charToPrint == '\n')
+	switch (charToPrint)
 	{
-		send_return(charCount);
+
+	case '\r':
+	/*{
+		send_cr(charCount);
 		charCount = 0;
 	}
-	else if (charToPrint == '\200' or charToPrint == '\201')
+	break;*/
+	case '\n':
+	{
+		send_crlf(charCount);
+		charCount = 0;
+	}
+	break;
+
+	case '\t':
+	{
+		send_letter(asciiTrans[' ']);
+		send_letter(asciiTrans[' ']);
+		send_letter(asciiTrans[' ']);
+		send_letter(asciiTrans[' ']);
+		charCount += 4;
+	}
+
+	case '\200':
+	case '\201':
 	{
 		paper_vert((charToPrint == '\200' ? 0 : 1), 8); // full line up/down
 	}
-	else if (charToPrint == '\004')
+	break;
+
+	case '\004':
 	{ // micro-down, ctrl-d is 4
 		paper_vert(1, 1);
 	}
-	else if (charToPrint == '\025')
+	break;
+
+	case '\025':
 	{ // micro-up, ctrl-u is 21
 		paper_vert(0, 1);
 	}
+	break;
 
 	// originally: if (charToPrint == 130 or charToPrint == 0x7f)
-	else if (charToPrint == '\202' or charToPrint == '\177')
+	case '\202':
+	case '\177':
 	{
 		// left arrow or delete
 		if (charCount > 0)
@@ -566,25 +665,33 @@ int printOne(byte charToPrint, int charCount)
 			charCount--;
 		}
 	}
-	else if (charToPrint == 131)
+	break;
+
+	case 131:
 	{ // micro-backspace
 		// DOES NOT UPDATE CHARCOUNT!
 		// THIS WILL CAUSE PROBLEMS WITH RETURN!
 		// TODO: FIX THIS ISSUE
 		micro_backspace(1);
 	}
-	else if (charToPrint == 132)
+	break;
+
+	case 132:
 	{ // micro-forwardspace
 		// DOES NOT UPDATE CHARCOUNT!
 		// THIS WILL CAUSE PROBLEMS WITH RETURN!
 		// TODO: FIX THIS ISSUE
 		forwardSpaces(1);
 	}
-	else
+	break;
+
+	default:
 	{
 		// Serial.println("about to print");
 		send_letter(asciiTrans[charToPrint]);
 		charCount++;
+	}
+	break;
 	}
 
 	// Serial.println("ok"); // sends back our characters (one) printed
@@ -629,7 +736,7 @@ int printAllChars(char buffer[],
 			{
 				fastTextFinish();
 				fastPrinting = false;
-				send_return(charCount);
+				send_crlf(charCount);
 				charCount = 0;
 			}
 			break;
@@ -697,7 +804,7 @@ int printAllChars(char buffer[],
 					fastTextFinish();
 					fastPrinting = false;
 				}
-				send_return(charCount);
+				send_crlf(charCount);
 				charCount = 0;
 			}
 			bufferPos++;
@@ -811,7 +918,7 @@ void print_strln(char *s)
 {
 	// prints a line and then a carriage return
 	print_str(s);
-	send_return(strlen(s));
+	send_crlf(strlen(s));
 }
 
 inline void sendByteOnPin(int command)
@@ -1101,7 +1208,7 @@ void backspace_no_correct()
 	// delay(LETTER_DELAY / 10); // a bit more time
 }
 
-void send_return(int numChars)
+void send_crlf(int numChars)
 {
 	// calculations for further down
 	int byte1 = (numChars * 5) >> 7;
@@ -1152,6 +1259,35 @@ void send_return(int numChars)
 	sendByteOnPin(0x00b);*/
 
 	// wait for carriage
+	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * numChars);
+}
+
+void send_cr(int numChars)
+{
+	// calculations for further down
+	int byte1 = (numChars * 5) >> 7;
+	int byte2 = ((numChars * 5) & 0x7f) << 1;
+
+	sendByte(0x121);
+	sendByte(0x00b);
+	sendByte(0x121);
+	sendByte(0x00d);
+	sendByte(0x007);
+	sendByte(0x121);
+
+	/*if (numChars <= 23 || numChars >= 26) {*/
+	sendByte(0x006);
+
+	// We will send two bytes from a 10-bit number
+	// which is numChars * 5. The top three bits
+	// of the 10-bit number comprise the first byte,
+	// and the remaining 7 bits comprise the second
+	// byte, although the byte needs to be shifted
+	// left by one (not sure why)
+	// the numbers are calculated above for timing reasons
+	sendByte(byte1);
+	sendByte(byte2); // each char is worth 10
+	sendByte(0x121);
 	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * numChars);
 }
 

@@ -19,6 +19,7 @@
                 "/home/mitch/.arduino15/packages/arduino/hardware/avr/1.8.3/cores/arduino",
                 "/home/mitch/.arduino15/packages/arduino/hardware/avr/1.8.3/variants/eightanaloginputs",
                 "/home/mitch/Arduino/libraries/LedControl-master/src",
+                "/home/mitch/Arduino/libraries/GyverTimers/src",
                 "/home/mitch/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/home/mitch/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
                 "/home/mitch/.arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include"
