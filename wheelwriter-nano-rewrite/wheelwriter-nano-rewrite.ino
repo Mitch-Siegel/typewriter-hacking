@@ -94,22 +94,22 @@ byte asciiTrans[128] =
 	 //
 	 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // 1
 
-	 //    sp     !     "     #     $     %     &     '     (     )     *     +     ,     -     .     /
+	 // sp     !     "     #     $     %     &     '     (     )     *     +     ,     -     .     /
 	 0x00, 0x49, 0x4b, 0x38, 0x37, 0x39, 0x3f, 0x4c, 0x23, 0x16, 0x36, 0x3b, 0xc, 0x0e, 0x57, 0x28, // 2
 
-	 //     0     1     2     3     4     5     6     7     8     9     :     ;     <     =     >     ?
+	 // 0     1     2     3     4     5     6     7     8     9     :     ;     <     =     >     ?
 	 0x30, 0x2e, 0x2f, 0x2c, 0x32, 0x31, 0x33, 0x35, 0x34, 0x2a, 0x4e, 0x50, 0x00, 0x4d, 0x00, 0x4a, // 3
 
-	 //     @     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O
+	 // @     A     B     C     D     E     F     G     H     I     J     K     L     M     N     O
 	 0x3d, 0x20, 0x12, 0x1b, 0x1d, 0x1e, 0x11, 0x0f, 0x14, 0x1F, 0x21, 0x2b, 0x18, 0x24, 0x1a, 0x22, // 4
 
-	 //     P     Q     R     S     T     U     V     W     X     Y     Z     [     \     ]     ^     _
+	 // P     Q     R     S     T     U     V     W     X     Y     Z     [     \     ]     ^     _
 	 0x15, 0x3e, 0x17, 0x19, 0x1c, 0x10, 0x0d, 0x29, 0x2d, 0x26, 0x13, 0x41, 0x00, 0x40, 0x00, 0x4f, // 5
 
-	 //     `     a     b     c     d     e     f     g     h     i     j     k     l     m     n     o
+	 // `     a     b     c     d     e     f     g     h     i     j     k     l     m     n     o
 	 0x00, 0x01, 0x59, 0x05, 0x07, 0x60, 0x0a, 0x5a, 0x08, 0x5d, 0x56, 0x0b, 0x09, 0x04, 0x02, 0x5f, // 6
 
-	 //     p     q     r     s     t     u     v     w     x     y     z     {     |     }     ~    DEL
+	 // p     q     r     s     t     u     v     w     x     y     z     {     |     }     ~    DEL
 	 0x5c, 0x52, 0x03, 0x06, 0x5e, 0x5b, 0x53, 0x55, 0x51, 0x58, 0x54, 0x00, 0x00, 0x00, 0x00, 0x00}; // 7
 
 byte asciiTransRev[128];
@@ -117,7 +117,7 @@ byte asciiTransRev[128];
 void setup()
 {
 	// initialize serial communication at 115200 bits per second:
-	Serial.begin(115200);
+	Serial.begin(300);
 	Serial.setTimeout(25);
 
 	for (int i = 0; i < 0x100; i++)
@@ -248,6 +248,29 @@ int printAscii(char c, int charCount)
 	}
 		return charCount + 1;
 		break;
+
+	case '\\':
+	{
+		micro_backspace(2);
+		paper_vert(0, 4);
+
+		letterNoSpace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterNoSpace(asciiTrans['.']);
+		paper_vert(1, 1);
+		letterMicrospace(asciiTrans['.']);
+		paper_vert(0, 1);
+		letterMicrospace(asciiTrans[' ']);
+		letterMicrospace(asciiTrans[' ']);
+
+	}
+	break;
 
 	case '~':
 	{
@@ -628,12 +651,10 @@ int printOne(byte charToPrint, int charCount)
 
 	case '\t':
 	{
-		send_letter(asciiTrans[' ']);
-		send_letter(asciiTrans[' ']);
-		send_letter(asciiTrans[' ']);
-		send_letter(asciiTrans[' ']);
-		charCount += 4;
+		send_tab();
+		charCount += 5;
 	}
+	break;
 
 	case '\200':
 	case '\201':
@@ -1289,6 +1310,13 @@ void send_cr(int numChars)
 	sendByte(byte2); // each char is worth 10
 	sendByte(0x121);
 	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * numChars);
+}
+
+#define TAB_DELAY 200
+void send_tab()
+{
+	forwardSpaces(17);
+	delay(TAB_DELAY);
 }
 
 void correct_letter(int letter)
