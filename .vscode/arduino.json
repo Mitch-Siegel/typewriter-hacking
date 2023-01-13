@@ -1,7 +1,7 @@
 {
     "configuration": "cpu=atmega328",
     "board": "arduino:avr:nano",
-    "port": "/dev/ttyUSB1",
+    "port": "/dev/ttyUSB0",
     "sketch": "wheelwriter-nano-rewrite/wheelwriter-nano-rewrite.ino",
     "output": "/tmp/arduinobuild",
     "programmer": "arduino:avrispmkii"

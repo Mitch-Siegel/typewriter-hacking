@@ -268,7 +268,6 @@ int printAscii(char c, int charCount)
 		paper_vert(0, 1);
 		letterMicrospace(asciiTrans[' ']);
 		letterMicrospace(asciiTrans[' ']);
-
 	}
 	break;
 
@@ -382,10 +381,48 @@ void LCD_WriteNumber(int number, int nDigits, int startDigit)
 	}
 }
 
+void printRun(uint16_t runLength, char c)
+{
+	static bool inFastText = false;
+	if (c == '\n')
+	{
+		fastTextFinish();
+		// delay(LETTER_DELAY);
+		paper_vert(1, 1); // Move down one pixel
+		if (runLength > 0)
+		{
+			micro_backspace(runLength * 3);
+		}
+		inFastText = false;
+	}
+	else
+	{
+		if (c == ' ')
+		{
+			// turn off fastText if it is on
+			if (inFastText)
+			{
+				fastTextFinish();
+				inFastText = false;
+			}
+			forwardSpaces(runLength);
+		}
+		else if (!inFastText)
+		{
+			fastTextInit();
+			inFastText = true;
+			fastTextCharsMicro(c, runLength);
+		}
+	}
+}
+
+bool gfxMode = false;
+
 // the loop routine runs over and over again forever:
 void loop()
 {
 	static int charCount = 0;
+	static bool lastGfxMode = false;
 
 	// char buffer[1024]; // let's make sure we actually have some room to buffer text here
 	// uint8_t readLength = 65;
@@ -395,51 +432,134 @@ void loop()
 	}
 	size_t available = printQueue.Available();
 	LCD_WriteNumber(available, 4, 0);
+	if (gfxMode != lastGfxMode)
+	{
+		sseg.setChar(0, 7, gfxMode ? '6' : ' ', false);
+		lastGfxMode = gfxMode;
+	}
 
 	if (available)
 	{
 		digitalWrite(LED, 1);
-		static bool skipNext = false;
 
-		if (skipNext)
+		// handle graphics if we are in that mode
+		if (gfxMode)
 		{
-			printQueue.Next();
-			skipNext = false;
-			return;
-		}
-
-		// Serial.println(printQueue.Available());
-		// Serial.print("Read ");
-		// Serial.println(bytesRead);
-		// Serial.println(" bytes.");
-
-		if (wordWrap && isWhitespace(printQueue.Lookahead(0)))
-		{
-			int charsRemaining = 80 - charCount;
-			for (size_t i = 1; i < available; i++)
+			// gfx commands come in sets of 3 bytes, so make sure we can read all of them at once
+			if (available < 2)
 			{
-				if (isWhitespace(printQueue.Lookahead(i)))
-				{
-					break;
-				}
-				else
-				{
-					charsRemaining--;
-				}
-			}
-			if (charsRemaining <= 0)
-			{
-				skipNext = true;
-				charCount = printOne('\r', charCount);
 				return;
 			}
-		}
 
-		charCount = printAscii(printQueue.Next(), charCount);
-		// wrap to a new line at 80 characters
-		if (charCount == 80)
+			char command = printQueue.Next();
+			// Serial.print("Command: ");
+			// Serial.println(command);
+			switch (command)
+			{
+			case 'n':
+				// Serial.print("NL: ");
+				// Serial.println(charCount);
+				paper_vert(1, 1);
+				while (charCount > 0)
+				{
+#define MAX_MICROBACKSPACES_AT_ONCE 10
+					if (charCount > MAX_MICROBACKSPACES_AT_ONCE)
+					{
+						micro_backspace(MAX_MICROBACKSPACES_AT_ONCE * 4);
+
+						charCount -= MAX_MICROBACKSPACES_AT_ONCE;
+					}
+					else
+					{
+						micro_backspace(charCount * 4);
+						charCount = 0;
+					}
+				}
+				charCount = 0;
+				printQueue.Next();
+				break;
+
+			case '1':
+			case '0':
+
+			{
+				uint8_t runLength = printQueue.Next() - '0';
+				// Serial.print("1: ");
+				// Serial.println(runLength);
+				char toPrint = (command == '1' ? asciiTrans['.'] : asciiTrans[' ']);
+
+				/*if(command != '1')
+				{
+					while(runLength >= 5)
+					{
+						send_letter(asciiTrans[' ']);
+						send_letter(asciiTrans[' ']);
+						runLength -= 5;
+						charCount += 5;
+					}
+				}*/
+				for (int i = runLength; i > 0; i--)
+				{
+					LCD_WriteNumber(i, 3, 4);
+					letterMicrospace(toPrint);
+					letterMicrospace(asciiTrans[' ']);
+				}
+				charCount += runLength;
+			}
+			break;
+
+			default:
+				Serial.print("Saw something unexpected in the RLE! (");
+				Serial.print(command);
+				Serial.println(")");
+				break;
+			}
+		}
+		// otherwise just print out text
+		else
 		{
-			charCount = printOne('\r', charCount);
+			static bool skipNext = false;
+
+			if (skipNext)
+			{
+				printQueue.Next();
+				skipNext = false;
+				return;
+			}
+
+			// Serial.println(printQueue.Available());
+			// Serial.print("Read ");
+			// Serial.println(bytesRead);
+			// Serial.println(" bytes.");
+
+			if (wordWrap && isWhitespace(printQueue.Lookahead(0)))
+			{
+				int charsRemaining = 80 - charCount;
+				for (size_t i = 1; i < available; i++)
+				{
+					if (isWhitespace(printQueue.Lookahead(i)))
+					{
+						break;
+					}
+					else
+					{
+						charsRemaining--;
+					}
+				}
+				if (charsRemaining <= 0)
+				{
+					skipNext = true;
+					charCount = printOne('\r', charCount);
+					return;
+				}
+			}
+
+			charCount = printAscii(printQueue.Next(), charCount);
+			// wrap to a new line at 80 characters
+			if (charCount == 80)
+			{
+				charCount = printOne('\r', charCount);
+			}
 		}
 	}
 	else
@@ -892,41 +1012,6 @@ void printImage(char *buffer)
 	Serial.println("done");
 }
 
-void printRun(uint16_t runLength, char c)
-{
-	static bool inFastText = false;
-	if (c == '\n')
-	{
-		fastTextFinish();
-		// delay(LETTER_DELAY);
-		paper_vert(1, 1); // Move down one pixel
-		if (runLength > 0)
-		{
-			micro_backspace(runLength * 3);
-		}
-		inFastText = false;
-	}
-	else
-	{
-		if (c == ' ')
-		{
-			// turn off fastText if it is on
-			if (inFastText)
-			{
-				fastTextFinish();
-				inFastText = false;
-			}
-			forwardSpaces(runLength);
-		}
-		else if (!inFastText)
-		{
-			fastTextInit();
-			inFastText = true;
-			fastTextCharsMicro(c, runLength);
-		}
-	}
-}
-
 void print_str(char *s)
 {
 	while (*s != '\0')
@@ -1146,7 +1231,7 @@ void letterNoSpace(int letter)
 	delay(NOSPACE_DELAY); // before next character
 }
 
-#define MICROSPACE_DELAY 23
+#define MICROSPACE_DELAY 65
 
 void letterMicrospace(int letter)
 {
@@ -1355,7 +1440,7 @@ void micro_backspace(int microspaces)
 	sendByte(0b000000000);
 	// sendByte(microspaces * 3);
 	sendByte(microspaces);
-	// delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * microspaces / 5);
+	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * microspaces / 5);
 	// sendByte(0b000000010);
 	/*
 	sendByte(0x121);
