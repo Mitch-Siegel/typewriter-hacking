@@ -5,16 +5,15 @@
 	Pin 2: ALSO connected to the bus, but listens instead of
 				 sending data
  */
-#include <LedControl.h>
-#include <GyverTimers.h>
+// #include <LedControl.h>
 
-#define PIN_READ 3
-#define PIN_WRITE 4;
+#define PIN_READ 2
+#define PIN_WRITE 4
 
 #define DIN 6
 #define CS 7
 #define CLK 8
-LedControl sseg(DIN, CLK, CS);
+// LedControl sseg(DIN, CLK, CS);
 
 // #include<PinChangeInt.h>
 
@@ -23,11 +22,15 @@ LedControl sseg(DIN, CLK, CS);
 // #define CARRIAGE_WAIT_MULTIPLIER 15
 #define CARRIAGE_WAIT_MULTIPLIER 10
 
-#define busWrite1() PORTD &= 0b11111011
+#define busWrite1() REG_WRITE (GPIO_OUT_W1TC_REG, BIT4); // GPIO LOW
 
-#define busWrite0() PORTD |= 0b00000100
+#define busWrite0() REG_WRITE (GPIO_OUT_W1TS_REG, BIT4); // GPIO HIGH
 
-#define busRead() PIND & (1 << (PIN_READ))
+// #define busWrite1() PORTD &= 0b11111011
+
+// #define busWrite0() PORTD |= 0b00000100
+
+#define busRead() REG_READ(GPIO_OUT_REG) & (1 << (PIN_READ))
 
 #define busWriteBit(command, bitmask) (command & bitmask) ? busWrite1() : busWrite0()
 
@@ -57,8 +60,11 @@ bool wordWrap = true;	  // when printing words, dump out to a newline if the wor
 
 void pulseDelay()
 {
-	nop64; // 4us
-	nop8;  // 0.5us
+	for (int i = 0; i < 199; i++)
+	{
+		nop1;
+	}
+	nop2;
 }
 
 // on an Arduino Nano, ATmega328, the following will delay roughly 5.25us
@@ -126,16 +132,16 @@ void setup()
 	}
 
 	// Digital pins
-	pinMode(2, OUTPUT);		  // pin that will trigger the bus
+	pinMode(PIN_WRITE, OUTPUT);		  // pin that will trigger the bus
 	pinMode(PIN_READ, INPUT); // listening pin
-	pinMode(4, INPUT_PULLUP); // for the button
 
 	pinMode(LED, OUTPUT);
 
 	// start the input pin off (meaning the bus is high, normal state)
-	PORTD &= ~(1 << PIN_READ - 1);
-	sseg.shutdown(0, false);
-	sseg.clearDisplay(0);
+	digitalWrite(PIN_WRITE, 0);
+	// PORTD &= ~(1 << PIN_READ - 1);
+	// sseg.shutdown(0, false);
+	// sseg.clearDisplay(0);
 }
 
 // test print string:
@@ -376,7 +382,7 @@ void LCD_WriteNumber(int number, int nDigits, int startDigit)
 {
 	for (int i = 0; i < nDigits; i++)
 	{
-		sseg.setDigit(0, i + startDigit, number % 10, false);
+		// sseg.setDigit(0, i + startDigit, number % 10, false);
 		number /= 10;
 	}
 }
@@ -434,7 +440,7 @@ void loop()
 	LCD_WriteNumber(available, 4, 0);
 	if (gfxMode != lastGfxMode)
 	{
-		sseg.setChar(0, 7, gfxMode ? '6' : ' ', false);
+		// sseg.setChar(0, 7, gfxMode ? '6' : ' ', false);
 		lastGfxMode = gfxMode;
 	}
 
