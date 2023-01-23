@@ -5,29 +5,37 @@
 	Pin 2: ALSO connected to the bus, but listens instead of
 				 sending data
  */
-#include <LedControl.h>
-#include <GyverTimers.h>
+// #include <LedControl.h>
+// #include <GyverTimers.h>
 
-#define PIN_READ 3
-#define PIN_WRITE 2
+#define PIN_READ 18
+#define PIN_WRITE 19
 
 #define DIN 6
 #define CS 7
 #define CLK 8
-LedControl sseg(DIN, CLK, CS);
+// LedControl sseg(DIN, CLK, CS);
 
 // #include<PinChangeInt.h>
 
-#define LETTER_DELAY 450
+#define LETTER_DELAY 75
+#define LETTER_NOSPACE_DELAY 50
+#define MICROSPACE_DELAY 20
+
 #define CARRIAGE_WAIT_BASE 200
-// #define CARRIAGE_WAIT_MULTIPLIER 15
-#define CARRIAGE_WAIT_MULTIPLIER 10
+#define CARRIAGE_WAIT_MULTIPLIER 15
+#define SEND_BYTE_DELAY_US 500
+#define VERT_DELAY 10 // delay for paper_vert (multiplied by number of microspaces)
+#define TAB_DELAY 150
 
-#define busWrite1() PORTD &= (~(0b1 << (PIN_WRITE)))
+#define busWrite1() REG_WRITE(GPIO_OUT_W1TC_REG, BIT19); // GPIO LOW
 
-#define busWrite0() PORTD |= ((0b1 << (PIN_WRITE)))
+#define busWrite0() REG_WRITE(GPIO_OUT_W1TS_REG, BIT19); // GPIO HIGH
 
-#define busRead() PIND & (1 << (PIN_READ))
+// #define busWrite1() digitalWrite(PIN_WRITE, LOW);
+// #define busWrite0() digitalWrite(PIN_WRITE, HIGH);
+
+#define busRead() !digitalRead(PIN_READ)
 
 #define busWriteBit(command, bitmask) (command & bitmask) ? busWrite1() : busWrite0()
 
@@ -36,7 +44,7 @@ bool underline = false;	  // off to start
 bool reverseText = false; // for printing in reverse
 bool wordWrap = true;	  // when printing words, dump out to a newline if the word will span the end of one line and the beginning of the next
 
-#define LED 13 // the LED light
+#define LED 2 // the LED light
 
 // #define nop1_help __asm__ __volatile__("nop\n\t"); // 62.5ns	or 1 cycles
 #define nop1_help "nop\n\t"				 // 62.5ns	or 1 cycles
@@ -57,8 +65,11 @@ bool wordWrap = true;	  // when printing words, dump out to a newline if the wor
 
 void pulseDelay()
 {
-	nop64; // 4us
-	nop8;  // 0.5us
+	for (int i = 0; i < 199; i++)
+	{
+		nop1;
+	}
+	// nop2;
 }
 
 // on an Arduino Nano, ATmega328, the following will delay roughly 5.25us
@@ -117,7 +128,7 @@ byte asciiTransRev[128];
 void setup()
 {
 	// initialize serial communication at 115200 bits per second:
-	Serial.begin(300);
+	Serial.begin(115200);
 	Serial.setTimeout(25);
 
 	for (int i = 0; i < 0x100; i++)
@@ -126,16 +137,16 @@ void setup()
 	}
 
 	// Digital pins
-	pinMode(2, OUTPUT);		  // pin that will trigger the bus
-	pinMode(PIN_READ, INPUT); // listening pin
-	pinMode(4, INPUT_PULLUP); // for the button
+	pinMode(PIN_WRITE, OUTPUT);		 // pin that will trigger the bus
+	pinMode(PIN_READ, INPUT_PULLUP); // listening pin
+	pinMode(4, INPUT_PULLUP);		 // for the button
 
 	pinMode(LED, OUTPUT);
 
 	// start the input pin off (meaning the bus is high, normal state)
-	PORTD &= ~(1 << PIN_READ - 1);
-	sseg.shutdown(0, false);
-	sseg.clearDisplay(0);
+	// PORTD &= ~(1 << PIN_READ - 1);
+	// sseg.shutdown(0, false);
+	// sseg.clearDisplay(0);
 }
 
 // test print string:
@@ -304,6 +315,7 @@ int printAscii(char c, int charCount)
 		break;
 
 	default:
+		Serial.println(c);
 		return printOne(c, charCount);
 		break;
 	}
@@ -376,7 +388,7 @@ void LCD_WriteNumber(int number, int nDigits, int startDigit)
 {
 	for (int i = 0; i < nDigits; i++)
 	{
-		sseg.setDigit(0, i + startDigit, number % 10, false);
+		// sseg.setDigit(0, i + startDigit, number % 10, false);
 		number /= 10;
 	}
 }
@@ -434,7 +446,7 @@ void loop()
 	LCD_WriteNumber(available, 4, 0);
 	if (gfxMode != lastGfxMode)
 	{
-		sseg.setChar(0, 7, gfxMode ? '6' : ' ', false);
+		// sseg.setChar(0, 7, gfxMode ? '6' : ' ', false);
 		lastGfxMode = gfxMode;
 	}
 
@@ -771,8 +783,7 @@ int printOne(byte charToPrint, int charCount)
 
 	case '\t':
 	{
-		send_tab();
-		charCount += 5;
+		charCount = send_tab(charCount);
 	}
 	break;
 
@@ -1192,6 +1203,7 @@ void send_letter(int letter)
 	sendByte(0x121);
 	sendByte(0b000000011);
 	sendByte(letter);
+	/*
 	if (underline)
 	{
 		sendByte(0b000000000); // no space
@@ -1212,14 +1224,13 @@ void send_letter(int letter)
 		sendByte(0b000001001);
 	}
 	else
-	{
-		// not bold
-		sendByte(0b000001010); // spacing for one character
-	}
-	// delay(LETTER_DELAY); // before next character
+	{*/
+	// not bold
+	sendByte(0b000001010); // spacing for one character
+	// }
+	delay(LETTER_DELAY); // before next character
 }
 
-#define NOSPACE_DELAY 50
 void letterNoSpace(int letter)
 {
 	sendByte(0x121);
@@ -1227,11 +1238,9 @@ void letterNoSpace(int letter)
 	sendByte(0x121);
 	sendByte(0b000000011);
 	sendByte(letter);
-	sendByte(0);		  // don't send any spaces
-	delay(NOSPACE_DELAY); // before next character
+	sendByte(0);				 // don't send any spaces
+	delay(LETTER_NOSPACE_DELAY); // before next character
 }
-
-#define MICROSPACE_DELAY 65
 
 void letterMicrospace(int letter)
 {
@@ -1240,11 +1249,10 @@ void letterMicrospace(int letter)
 	sendByte(0x121);
 	sendByte(0b000000011);
 	sendByte(letter);
-	sendByte(2);			 // send one microspace
-	delay(MICROSPACE_DELAY); // before next character
+	sendByte(2); // send one microspace
+	delay(LETTER_DELAY);
 }
 
-#define VERT_DELAY 45 // delay for paper_vert
 // 0 is up, 1 is down
 void paper_vert(int direction)
 {
@@ -1275,7 +1283,7 @@ void paper_vert(int direction)
 	sendByte(0x121);
 	sendByte(0x00b);
 
-	delay(VERT_DELAY); // give it a bit more time
+	delay(VERT_DELAY * 5); // give it a bit more time
 }
 
 // 0 is up, 1 is down
@@ -1291,7 +1299,7 @@ void paper_vert(int direction, int microspaces)
 
 	sendByte(0x121);
 	sendByte(0x00b);
-	// delay(LETTER_DELAY + LETTER_DELAY / 10 * microspaces/5);
+	delay(VERT_DELAY * microspaces);
 }
 
 void backspace_no_correct()
@@ -1311,7 +1319,7 @@ void backspace_no_correct()
 	// send one more byte but don't wait explicitly for the response
 	// of 0b000000100
 	sendByteOnPin(0x00b);*/
-	// delay(LETTER_DELAY / 10); // a bit more time
+	delay(LETTER_DELAY); // a bit more time
 }
 
 void send_crlf(int numChars)
@@ -1365,7 +1373,7 @@ void send_crlf(int numChars)
 	sendByteOnPin(0x00b);*/
 
 	// wait for carriage
-	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * numChars);
+	delay(CARRIAGE_WAIT_BASE + (CARRIAGE_WAIT_MULTIPLIER * numChars));
 }
 
 void send_cr(int numChars)
@@ -1397,11 +1405,14 @@ void send_cr(int numChars)
 	delay(CARRIAGE_WAIT_BASE + CARRIAGE_WAIT_MULTIPLIER * numChars);
 }
 
-#define TAB_DELAY 200
-void send_tab()
+int send_tab(int charCount)
 {
-	forwardSpaces(17);
-	delay(TAB_DELAY);
+	send_letter(asciiTrans[' ']);
+	send_letter(asciiTrans[' ']);
+	send_letter(asciiTrans[' ']);
+	send_letter(asciiTrans[' ']);
+	// send_letter(asciiTrans[' ']);
+	return charCount + 4;
 }
 
 void correct_letter(int letter)
@@ -1467,7 +1478,7 @@ void forwardSpaces(int num_microspaces)
 	sendByte(0b010000000);
 	// sendByte(0b001111100);
 	sendByte(num_microspaces * 3);
-	// delay(LETTER_DELAY + LETTER_DELAY / 10 * num_microspaces / 5);
+	delay(MICROSPACE_DELAY * num_microspaces);
 }
 
 void spin()
@@ -1487,15 +1498,16 @@ void sendByte(int b)
 {
 	// Serial.println("sending byte!");
 	sendByteOnPin(b);
+
 	while (busRead())
 	{
-		// busy
 	}
+
 	while (!busRead())
 	{
-		// busy
 	}
-	delayMicroseconds(LETTER_DELAY); // wait a bit before sending next char
+
+	delayMicroseconds(SEND_BYTE_DELAY_US);
 }
 void fastTextInit()
 {
